@@ -48,7 +48,7 @@ void main() {
     auditPath: auditPath,
     writeEnabled: writeEnabled,
     deleteEnabled: deleteEnabled,
-    clock: () => DateTime(2026, 11, 22, 10),
+    clock: () => DateTime.utc(2026, 11, 22, 10),
   );
 
   Future<String> writeFile(String name, String content) async {
@@ -522,7 +522,7 @@ void main() {
       expect(events[3].reason, 'Ha vuelto');
       expect(events.last.reason, 'Era una prueba');
       expect(events.last.snapshot?.status, IncidentStatus.abierta);
-      expect(events.first.timestamp, '2026-11-22T09:00:00.000Z');
+      expect(events.first.timestamp, '2026-11-22T10:00:00.000Z');
     });
 
     test('las operaciones rechazadas no se registran', () async {
