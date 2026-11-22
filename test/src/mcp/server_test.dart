@@ -1,60 +1,8 @@
-import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:mcp_dart/mcp_dart.dart';
 import 'package:test/test.dart';
-import 'package:tickets_service_mcp/tickets_service_mcp.dart';
 
-/// Servidor y cliente MCP conectados en memoria.
-class Harness {
-  new _(this.server, this.client, this._pipes);
-
-  static Future<Harness> start({String docsDirectory = 'docs'}) async {
-    final repository = await IncidentRepository.load('data/tickets.json');
-    final server = createMcpServer(
-      repository: repository,
-      docsDirectory: docsDirectory,
-    );
-    final toServer = StreamController<List<int>>();
-    final toClient = StreamController<List<int>>();
-    await server.connect(
-      IOStreamTransport(stream: toServer.stream, sink: toClient.sink),
-    );
-    final client = McpClient(
-      const Implementation(name: 'test', version: '1.0.0'),
-    );
-    await client.connect(
-      IOStreamTransport(stream: toClient.stream, sink: toServer.sink),
-    );
-    return Harness._(server, client, [toServer, toClient]);
-  }
-
-  final McpServer server;
-  final McpClient client;
-  final List<StreamController<List<int>>> _pipes;
-
-  Future<CallToolResult> call(String tool, [Map<String, dynamic>? args]) =>
-      client.callTool(CallToolRequest(name: tool, arguments: args ?? {}));
-
-  Future<void> stop() async {
-    await client.close();
-    await server.close();
-    for (final pipe in _pipes) {
-      await pipe.close();
-    }
-  }
-}
-
-Map<String, dynamic> structured(CallToolResult result) =>
-    jsonDecode((result.content.single as TextContent).text)
-        as Map<String, dynamic>;
-
-String firstId(Map<String, dynamic> data) =>
-    ((data['items'] as List).first as Map<String, dynamic>)['id'] as String;
-
-String errorText(CallToolResult result) =>
-    (result.content.single as TextContent).text;
+import '../../helpers/harness.dart';
 
 void main() {
   late Harness harness;
@@ -64,16 +12,32 @@ void main() {
   setUp(() async => harness = await Harness.start());
   tearDown(() => harness.stop());
 
-  test('anuncia las herramientas con sus pistas de solo lectura', () async {
-    final tools = (await harness.client.listTools()).tools;
+  test('anuncia todas las herramientas, también en solo lectura', () async {
+    final tools = {
+      for (final tool in (await harness.client.listTools()).tools)
+        tool.name: tool,
+    };
     expect(
-      tools.map((t) => t.name),
-      unorderedEquals(['buscar_incidencias', 'obtener_incidencia']),
+      tools.keys,
+      unorderedEquals([
+        'buscar_incidencias',
+        'obtener_incidencia',
+        'crear_incidencia',
+      ]),
     );
-    for (final tool in tools) {
-      expect(tool.annotations?.readOnlyHint, isTrue);
-      expect(tool.title, isNotEmpty);
-    }
+    expect(tools.values.every((t) => t.title!.isNotEmpty), isTrue);
+    expect(tools['buscar_incidencias']!.annotations?.readOnlyHint, isTrue);
+    expect(tools['obtener_incidencia']!.annotations?.readOnlyHint, isTrue);
+    expect(tools['crear_incidencia']!.annotations?.readOnlyHint, isFalse);
+    expect(tools['crear_incidencia']!.annotations?.destructiveHint, isFalse);
+  });
+
+  test('las instrucciones indican el modo de escritura', () async {
+    expect(harness.client.getInstructions(), contains('solo lectura'));
+    expect(
+      serverInstructions(writeEnabled: true),
+      contains('escritura está habilitada'),
+    );
   });
 
   group('buscar_incidencias', () {

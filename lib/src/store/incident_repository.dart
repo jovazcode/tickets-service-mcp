@@ -3,50 +3,118 @@ import 'dart:io';
 
 import 'package:tickets_service_mcp/src/domain/domain_exception.dart';
 import 'package:tickets_service_mcp/src/domain/incident.dart';
+import 'package:tickets_service_mcp/src/domain/incident_status.dart';
+import 'package:tickets_service_mcp/src/domain/new_incident.dart';
 
 /// {@template incident_repository}
 /// Acceso a las incidencias de la mesa.
 ///
-/// En esta fase es de solo lectura: carga las incidencias de un fichero JSON
-/// (la fixture) y las mantiene en memoria.
+/// Las incidencias viven en memoria. Si la escritura está habilitada, cada
+/// cambio se guarda de forma atómica en el almacén de trabajo; la fixture
+/// original nunca se modifica.
 /// {@endtemplate}
 class IncidentRepository {
   /// {@macro incident_repository}
   ///
-  /// Lanza [FormatException] si hay IDs duplicados.
-  new(Iterable<Incident> incidents)
-    : _incidents = List.unmodifiable(incidents) {
+  /// [nextId] es el número del siguiente ID; por defecto, el mayor existente
+  /// más uno. Si [writeEnabled] es `true`, [storePath] es obligatorio.
+  ///
+  /// Lanza [FormatException] si hay IDs duplicados o si [nextId] no es mayor
+  /// que todos los existentes.
+  new(
+    Iterable<Incident> incidents, {
+    int? nextId,
+    String? storePath,
+    bool writeEnabled = false,
+    DateTime Function()? clock,
+  }) : assert(!writeEnabled || storePath != null, 'storePath requerido'),
+       _incidents = List.unmodifiable(incidents),
+       _storePath = storePath,
+       _writeEnabled = writeEnabled,
+       _clock = clock ?? DateTime.now,
+       _nextId = 0 {
     final ids = <String>{};
+    var maxNumber = 0;
     for (final incident in _incidents) {
       if (!ids.add(incident.id)) {
         throw FormatException('ID duplicado: ${incident.id}');
       }
+      final number = _idNumber(incident.id);
+      if (number > maxNumber) maxNumber = number;
     }
+    if (nextId != null && nextId <= maxNumber) {
+      throw FormatException('nextId ($nextId) debe ser mayor que $maxNumber');
+    }
+    _nextId = nextId ?? maxNumber + 1;
   }
 
-  /// Carga las incidencias del fichero JSON en [path].
+  /// Abre el repositorio.
   ///
-  /// El fichero debe contener un array de incidencias. Lanza
-  /// [FileSystemException] si no se puede leer y [FormatException] si su
-  /// contenido no es válido.
-  static Future<IncidentRepository> load(String path) async {
-    final decoded = jsonDecode(await File(path).readAsString());
+  /// Si existe el almacén de trabajo en [storePath], se carga de ahí (aunque
+  /// la escritura esté deshabilitada, para no perder lo creado antes); si no,
+  /// se parte de la fixture en [fixturePath].
+  ///
+  /// Lanza [FileSystemException] si no se puede leer el fichero elegido y
+  /// [FormatException] si su contenido no es válido.
+  static Future<IncidentRepository> open({
+    required String fixturePath,
+    required String storePath,
+    bool writeEnabled = false,
+    DateTime Function()? clock,
+  }) async {
+    final store = File(storePath);
+    if (store.existsSync()) {
+      final decoded = jsonDecode(await store.readAsString());
+      if (decoded is! Map<String, dynamic> ||
+          decoded['nextId'] is! int ||
+          decoded['incidents'] is! List) {
+        throw const FormatException(
+          'El almacén debe ser un objeto con nextId e incidents',
+        );
+      }
+      return IncidentRepository(
+        _parseIncidents(decoded['incidents'] as List),
+        nextId: decoded['nextId'] as int,
+        storePath: storePath,
+        writeEnabled: writeEnabled,
+        clock: clock,
+      );
+    }
+
+    final decoded = jsonDecode(await File(fixturePath).readAsString());
     if (decoded is! List) {
       throw const FormatException('Se esperaba un array de incidencias');
     }
-    return IncidentRepository([
-      for (final item in decoded)
-        if (item is Map<String, dynamic>)
-          Incident.fromJson(item)
-        else
-          throw FormatException('Elemento no válido: $item'),
-    ]);
+    return IncidentRepository(
+      _parseIncidents(decoded),
+      storePath: storePath,
+      writeEnabled: writeEnabled,
+      clock: clock,
+    );
   }
 
-  final List<Incident> _incidents;
+  static List<Incident> _parseIncidents(List<dynamic> items) => [
+    for (final item in items)
+      if (item is Map<String, dynamic>)
+        Incident.fromJson(item)
+      else
+        throw FormatException('Elemento no válido: $item'),
+  ];
 
-  /// Todas las incidencias, en el orden del fichero.
+  static int _idNumber(String id) => int.parse(id.substring(4));
+
+  List<Incident> _incidents;
+  int _nextId;
+  final String? _storePath;
+  final bool _writeEnabled;
+  final DateTime Function() _clock;
+  Future<void> _writeQueue = Future.value();
+
+  /// Todas las incidencias, en orden de creación.
   List<Incident> get all => _incidents;
+
+  /// Si se permiten operaciones de escritura.
+  bool get writeEnabled => _writeEnabled;
 
   /// Devuelve la incidencia con [id].
   ///
@@ -56,4 +124,69 @@ class IncidentRepository {
     orElse: () =>
         throw DomainException('NOT_FOUND', 'No existe la incidencia $id'),
   );
+
+  /// Crea una incidencia `abierta` con fecha de hoy y la guarda.
+  ///
+  /// Lanza [DomainException] con código `WRITE_DISABLED` si la escritura no
+  /// está habilitada, `VALIDATION_ERROR` si [draft] no es válido o
+  /// `PERSISTENCE_ERROR` si no se pudo guardar (en ese caso no cambia nada).
+  Future<Incident> create(NewIncident draft) async {
+    _ensureWritable();
+    final valid = draft.validated();
+    return await _serialized(() async {
+      final incident = Incident(
+        id: 'INC-${_nextId.toString().padLeft(3, '0')}',
+        title: valid.title,
+        status: IncidentStatus.abierta,
+        impact: valid.impact,
+        workaround: valid.workaround,
+        created: _clock().toIso8601String().substring(0, 10),
+        detail: valid.detail,
+      );
+      final incidents = [..._incidents, incident];
+      await _persist(incidents, _nextId + 1);
+      _incidents = List.unmodifiable(incidents);
+      _nextId++;
+      return incident;
+    });
+  }
+
+  void _ensureWritable() {
+    if (!_writeEnabled) {
+      throw const DomainException(
+        'WRITE_DISABLED',
+        'El servidor está en modo solo lectura. Arráncalo con '
+            'MESA_INCIDENCIAS_WRITE_ENABLED=1 para permitir cambios.',
+      );
+    }
+  }
+
+  /// Ejecuta [operation] cuando hayan terminado las escrituras anteriores.
+  Future<T> _serialized<T>(Future<T> Function() operation) {
+    final result = _writeQueue.then((_) => operation());
+    _writeQueue = result.then((_) {}, onError: (Object _) {});
+    return result;
+  }
+
+  /// Escribe el almacén en un fichero temporal y lo renombra, para que un
+  /// fallo a mitad no deje el almacén corrupto.
+  Future<void> _persist(List<Incident> incidents, int nextId) async {
+    final store = File(_storePath!);
+    final temp = File('${store.path}.tmp');
+    final content = const JsonEncoder.withIndent('  ').convert({
+      'nextId': nextId,
+      'incidents': [for (final incident in incidents) incident.toJson()],
+    });
+    try {
+      await store.parent.create(recursive: true);
+      await temp.writeAsString('$content\n', flush: true);
+      await temp.rename(store.path);
+    } on FileSystemException catch (error) {
+      if (temp.existsSync()) temp.deleteSync();
+      throw DomainException(
+        'PERSISTENCE_ERROR',
+        'No se pudo guardar el almacén: ${error.message}',
+      );
+    }
+  }
 }

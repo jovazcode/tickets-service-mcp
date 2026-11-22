@@ -5,7 +5,10 @@ void main() {
   late List<Incident> incidents;
 
   setUpAll(() async {
-    incidents = (await IncidentRepository.load('data/tickets.json')).all;
+    incidents = (await IncidentRepository.open(
+      fixturePath: 'data/tickets.json',
+      storePath: 'no_existe/tickets.local.json',
+    )).all;
   });
 
   List<String> ids(SearchResult result) => [

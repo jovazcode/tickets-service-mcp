@@ -7,7 +7,10 @@
     "mesa-incidencias": {
       "type": "stdio",
       "command": "./build/tickets_service_mcp",
-      "args": []
+      "args": [],
+      "env": {
+        "MESA_INCIDENCIAS_WRITE_ENABLED": "${MESA_INCIDENCIAS_WRITE_ENABLED:-0}"
+      }
     }
   }
 }

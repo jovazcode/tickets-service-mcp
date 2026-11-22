@@ -15,7 +15,11 @@ Future<void> main(List<String> arguments) async {
 
   final IncidentRepository repository;
   try {
-    repository = await IncidentRepository.load(config.dataPath);
+    repository = await IncidentRepository.open(
+      fixturePath: config.dataPath,
+      storePath: config.storePath,
+      writeEnabled: config.writeEnabled,
+    );
   } on Exception catch (error) {
     stderr.writeln('[$serverName] No se pudieron cargar los datos: $error');
     exitCode = 1;
@@ -28,7 +32,8 @@ Future<void> main(List<String> arguments) async {
   );
   await server.connect(StdioServerTransport());
   stderr.writeln(
-    '[$serverName] listo por stdio con ${repository.all.length} incidencias',
+    '[$serverName] listo por stdio con ${repository.all.length} incidencias '
+    '(${config.writeEnabled ? 'escritura habilitada' : 'solo lectura'})',
   );
 }
 

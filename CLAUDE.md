@@ -8,7 +8,7 @@ Local MCP server (stdio transport) in Dart for a fictitious incident desk ("mesa
 
 This is an independent project designed from scratch; do not use sibling folders (`../resultado/`, `../inicio/`) as a reference.
 
-Current state (phase 1, read-only): tools `buscar_incidencias` and `obtener_incidencia`; resources `docs://proceso_apertura` and `docs://proceso_triaje` (Markdown in `docs/`). Next phases: create (write permission via env var), update/delete, then extra tools.
+Current state (phase 2): tools `buscar_incidencias`, `obtener_incidencia`, `crear_incidencia`; resources `docs://proceso_apertura` and `docs://proceso_triaje` (Markdown in `docs/`); prompt `abrir_incidencia`. Writes are rejected with `WRITE_DISABLED` unless `MESA_INCIDENCIAS_WRITE_ENABLED=1`; changes go to the working store `data/tickets.local.json` (`{nextId, incidents}`, atomic write, serialized queue), never to the fixture. Next phases: update/delete, then extra tools.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Current state (phase 1, read-only): tools `buscar_incidencias` and `obtener_inci
 - `lib/src/mcp/`: thin adapters. `createMcpServer` registers everything; one `BaseTool` subclass per tool (`run` returns the structured result, `execute` maps `DomainException` to `CallToolResult(isError: true)`).
 - `bin/` only reads config (`ServerConfig.fromEnvironment`, paths relative to the project root, overridable with `MESA_INCIDENCIAS_DATA` / `MESA_INCIDENCIAS_DOCS`) and connects `StdioServerTransport`; it is not covered by tests, so keep logic out of it.
 - Clients must launch the AOT binary `build/tickets_service_mcp` (`dart compile exe bin/tickets_service_mcp.dart -o build/tickets_service_mcp`; recompile after changes). `dart run` takes ~3 s to start, Claude Code's protocol probe times out and `/mcp` stays at "Connecting...".
-- Tests drive the server end to end with an in-process `McpClient` over `IOStreamTransport` (`test/src/mcp/server_test.dart`).
+- Tests drive the server end to end with an in-process `McpClient` over `IOStreamTransport`; reuse `test/helpers/harness.dart` (temporary working store, `writeEnabled` option).
 - Dart 3.14 lints require the new constructor syntax (`const new(...)`, `factory fromJson(...)`, enum `new(...)`); `dart fix --apply` converts it.
 
 ## Commands
@@ -54,7 +54,7 @@ Use `very_good dart test`, not `very_good test`: the latter targets Flutter and 
 
 ## Data
 
-`data/tickets.json` is the fixture: array of incidents with `id` (`INC-1xx`), `title`, `status` (`abierta`/`resuelta`…), `impact` (`bajo`/`alto`), `workaround` (bool), `created` (ISO date), `detail`. Treat it as read-only input.
+`data/tickets.json` is the fixture: array of incidents with `id` (`INC-1xx`), `title`, `status` (`abierta`/`resuelta`…), `impact` (`bajo`/`alto`), `workaround` (bool), `created` (ISO date), `detail`. Treat it as read-only input; the server never writes it.
 
 ## Agent skills
 
