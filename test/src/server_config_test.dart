@@ -10,6 +10,7 @@ void main() {
       );
       expect(config.dataPath, '/proyecto/data/tickets.json');
       expect(config.storePath, '/proyecto/data/tickets.local.json');
+      expect(config.auditPath, '/proyecto/data/tickets.audit.jsonl');
       expect(config.docsDirectory, '/proyecto/docs');
       expect(config.writeEnabled, isFalse);
       expect(config.deleteEnabled, isFalse);
@@ -22,11 +23,13 @@ void main() {
       expect(config.deleteEnabled, isTrue);
     });
 
-    test('lee la ruta del almacén del entorno', () {
+    test('lee las rutas del almacén y la auditoría del entorno', () {
       final config = ServerConfig.fromEnvironment(const {
         'MESA_INCIDENCIAS_STORE': '/tmp/mesa.json',
+        'MESA_INCIDENCIAS_AUDIT': 'logs/audit.jsonl',
       }, baseDirectory: '/proyecto');
       expect(config.storePath, '/tmp/mesa.json');
+      expect(config.auditPath, '/proyecto/logs/audit.jsonl');
     });
 
     for (final value in ['1', 'true', 'YES', ' on ']) {

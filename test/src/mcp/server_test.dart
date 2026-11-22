@@ -22,6 +22,8 @@ void main() {
       unorderedEquals([
         'buscar_incidencias',
         'obtener_incidencia',
+        'buscar_duplicadas',
+        'historial_incidencia',
         'siguiente_incidencia_prioritaria',
         'resumen_mesa',
         'crear_incidencia',
@@ -38,6 +40,8 @@ void main() {
       isTrue,
     );
     expect(tools['resumen_mesa']!.annotations?.readOnlyHint, isTrue);
+    expect(tools['buscar_duplicadas']!.annotations?.readOnlyHint, isTrue);
+    expect(tools['historial_incidencia']!.annotations?.readOnlyHint, isTrue);
     expect(tools['cambiar_estado']!.annotations?.readOnlyHint, isFalse);
     expect(tools['crear_incidencia']!.annotations?.readOnlyHint, isFalse);
     expect(tools['crear_incidencia']!.annotations?.destructiveHint, isFalse);

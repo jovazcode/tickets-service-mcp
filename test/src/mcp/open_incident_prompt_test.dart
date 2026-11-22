@@ -33,7 +33,7 @@ void main() {
 
     final text = (result.messages.last.content as TextContent).text;
     expect(text, contains('Problema: No funciona la impresora'));
-    expect(text, contains('buscar_incidencias'));
+    expect(text, contains('buscar_duplicadas'));
     expect(text, contains('crear_incidencia'));
   });
 

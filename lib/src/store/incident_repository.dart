@@ -1,25 +1,28 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:tickets_service_mcp/src/domain/audit_event.dart';
 import 'package:tickets_service_mcp/src/domain/domain_exception.dart';
 import 'package:tickets_service_mcp/src/domain/incident.dart';
 import 'package:tickets_service_mcp/src/domain/incident_patch.dart';
 import 'package:tickets_service_mcp/src/domain/incident_status.dart';
 import 'package:tickets_service_mcp/src/domain/new_incident.dart';
 import 'package:tickets_service_mcp/src/domain/text_rules.dart';
+import 'package:tickets_service_mcp/src/store/audit_log.dart';
 
 /// {@template incident_repository}
 /// Acceso a las incidencias de la mesa.
 ///
 /// Las incidencias viven en memoria. Si la escritura está habilitada, cada
-/// cambio se guarda de forma atómica en el almacén de trabajo; la fixture
-/// original nunca se modifica.
+/// cambio se guarda de forma atómica en el almacén de trabajo y se registra
+/// en la auditoría; la fixture original nunca se modifica.
 /// {@endtemplate}
 class IncidentRepository {
   /// {@macro incident_repository}
   ///
   /// [nextId] es el número del siguiente ID; por defecto, el mayor existente
-  /// más uno. Si [writeEnabled] es `true`, [storePath] es obligatorio.
+  /// más uno. Si [writeEnabled] es `true`, [storePath] y [audit] son
+  /// obligatorios.
   /// Borrar exige además [_deleteEnabled].
   ///
   /// Lanza [FormatException] si hay IDs duplicados o si [nextId] no es mayor
@@ -28,12 +31,17 @@ class IncidentRepository {
     Iterable<Incident> incidents, {
     int? nextId,
     String? storePath,
+    AuditLog? audit,
     bool writeEnabled = false,
     this._deleteEnabled = false,
     DateTime Function()? clock,
-  }) : assert(!writeEnabled || storePath != null, 'storePath requerido'),
+  }) : assert(
+         !writeEnabled || (storePath != null && audit != null),
+         'storePath y audit son obligatorios con escritura',
+       ),
        _incidents = List.unmodifiable(incidents),
        _storePath = storePath,
+       _audit = audit,
        _writeEnabled = writeEnabled,
        _clock = clock ?? DateTime.now,
        _nextId = 0 {
@@ -56,17 +64,20 @@ class IncidentRepository {
   ///
   /// Si existe el almacén de trabajo en [storePath], se carga de ahí (aunque
   /// la escritura esté deshabilitada, para no perder lo creado antes); si no,
-  /// se parte de la fixture en [fixturePath].
+  /// se parte de la fixture en [fixturePath]. Los cambios se registran en el
+  /// fichero de auditoría [auditPath].
   ///
   /// Lanza [FileSystemException] si no se puede leer el fichero elegido y
   /// [FormatException] si su contenido no es válido.
   static Future<IncidentRepository> open({
     required String fixturePath,
     required String storePath,
+    required String auditPath,
     bool writeEnabled = false,
     bool deleteEnabled = false,
     DateTime Function()? clock,
   }) async {
+    final audit = AuditLog(auditPath);
     final store = File(storePath);
     if (store.existsSync()) {
       final decoded = jsonDecode(await store.readAsString());
@@ -81,6 +92,7 @@ class IncidentRepository {
         _parseIncidents(decoded['incidents'] as List),
         nextId: decoded['nextId'] as int,
         storePath: storePath,
+        audit: audit,
         writeEnabled: writeEnabled,
         deleteEnabled: deleteEnabled,
         clock: clock,
@@ -94,6 +106,7 @@ class IncidentRepository {
     return IncidentRepository(
       _parseIncidents(decoded),
       storePath: storePath,
+      audit: audit,
       writeEnabled: writeEnabled,
       deleteEnabled: deleteEnabled,
       clock: clock,
@@ -113,6 +126,7 @@ class IncidentRepository {
   List<Incident> _incidents;
   int _nextId;
   final String? _storePath;
+  final AuditLog? _audit;
   final bool _writeEnabled;
   final bool _deleteEnabled;
   final DateTime Function() _clock;
@@ -154,10 +168,11 @@ class IncidentRepository {
         created: _clock().toIso8601String().substring(0, 10),
         detail: valid.detail,
       );
-      final incidents = [..._incidents, incident];
-      await _persist(incidents, _nextId + 1);
-      _incidents = List.unmodifiable(incidents);
-      _nextId++;
+      await _commit(
+        [..._incidents, incident],
+        _nextId + 1,
+        _event(AuditOperation.crear, before: null, after: incident),
+      );
       return incident;
     });
   }
@@ -174,7 +189,7 @@ class IncidentRepository {
     String id, {
     required int expectedRevision,
     required IncidentPatch patch,
-  }) => _mutate(id, expectedRevision, patch.applyTo);
+  }) => _mutate(id, expectedRevision, AuditOperation.actualizar, patch.applyTo);
 
   /// Cambia el estado de la incidencia [id] a [status], respetando las
   /// transiciones de [IncidentStatus.allowedNext].
@@ -191,7 +206,9 @@ class IncidentRepository {
     String? reason,
   }) async {
     if (reason != null) checkText('reason', reason, maxReasonLength);
-    return await _mutate(id, expectedRevision, (current) {
+    return await _mutate(id, expectedRevision, AuditOperation.cambiarEstado, (
+      current,
+    ) {
       if (current.status == status) {
         throw DomainException(
           'INVALID_TRANSITION',
@@ -214,7 +231,7 @@ class IncidentRepository {
         );
       }
       return current.copyWith(status: status, revision: current.revision + 1);
-    });
+    }, reason: reason);
   }
 
   /// Aplica [change] a la incidencia [id] si su revisión es
@@ -222,8 +239,10 @@ class IncidentRepository {
   Future<Incident> _mutate(
     String id,
     int expectedRevision,
-    Incident Function(Incident current) change,
-  ) async {
+    AuditOperation operation,
+    Incident Function(Incident current) change, {
+    String? reason,
+  }) async {
     _ensureWritable();
     return await _serialized(() async {
       final current = getById(id);
@@ -235,12 +254,14 @@ class IncidentRepository {
         );
       }
       final updated = change(current);
-      final incidents = [
-        for (final incident in _incidents)
-          if (incident.id == id) updated else incident,
-      ];
-      await _persist(incidents, _nextId);
-      _incidents = List.unmodifiable(incidents);
+      await _commit(
+        [
+          for (final incident in _incidents)
+            if (incident.id == id) updated else incident,
+        ],
+        _nextId,
+        _event(operation, before: current, after: updated, reason: reason),
+      );
       return updated;
     });
   }
@@ -264,14 +285,69 @@ class IncidentRepository {
     checkText('reason', reason, maxReasonLength);
     return await _serialized(() async {
       final deleted = getById(id);
-      final incidents = [
-        for (final incident in _incidents)
-          if (incident.id != id) incident,
-      ];
-      await _persist(incidents, _nextId);
-      _incidents = List.unmodifiable(incidents);
+      await _commit(
+        [
+          for (final incident in _incidents)
+            if (incident.id != id) incident,
+        ],
+        _nextId,
+        _event(
+          AuditOperation.eliminar,
+          before: deleted,
+          after: null,
+          reason: reason.trim(),
+        ),
+      );
       return deleted;
     });
+  }
+
+  /// Historial de cambios de la incidencia [id], del más antiguo al más
+  /// reciente. Funciona también con incidencias ya borradas.
+  ///
+  /// Lanza [DomainException] con código `NOT_FOUND` si la incidencia no
+  /// existe ni tiene historial.
+  Future<List<AuditEvent>> history(String id) async {
+    final audit = _audit;
+    final events = audit == null ? <AuditEvent>[] : await audit.eventsFor(id);
+    if (events.isEmpty) getById(id);
+    return events;
+  }
+
+  AuditEvent _event(
+    AuditOperation operation, {
+    required Incident? before,
+    required Incident? after,
+    String? reason,
+  }) => AuditEvent.between(
+    timestamp: _clock().toUtc().toIso8601String(),
+    operation: operation,
+    before: before,
+    after: after,
+    reason: reason?.trim(),
+  );
+
+  /// Guarda el nuevo estado y registra [event]. Si no se puede registrar la
+  /// auditoría, restaura el almacén anterior: nunca queda un cambio sin
+  /// registrar.
+  Future<void> _commit(
+    List<Incident> incidents,
+    int nextId,
+    AuditEvent event,
+  ) async {
+    await _persist(incidents, nextId);
+    try {
+      await _audit!.append(event);
+    } on FileSystemException catch (error) {
+      await _persist(_incidents, _nextId);
+      throw DomainException(
+        'PERSISTENCE_ERROR',
+        'No se pudo registrar la auditoría (${error.message}); no se ha '
+            'aplicado el cambio',
+      );
+    }
+    _incidents = List.unmodifiable(incidents);
+    _nextId = nextId;
   }
 
   void _ensureWritable() {
