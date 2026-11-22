@@ -1,0 +1,14 @@
+name: tickets_service_mcp
+description: Servidor MCP local (stdio) para la mesa de incidencias
+version: 0.1.0+1
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+executables:
+  tickets_service_mcp:
+
+dev_dependencies:
+  test: ^1.32.0
+  very_good_analysis: ^11.0.0
