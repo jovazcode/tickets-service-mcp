@@ -9,6 +9,9 @@ environment:
 executables:
   tickets_service_mcp:
 
+dependencies:
+  dart_mcp: ^0.5.2
+
 dev_dependencies:
   test: ^1.32.0
   very_good_analysis: ^11.0.0
