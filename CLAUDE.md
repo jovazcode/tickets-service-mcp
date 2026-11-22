@@ -34,6 +34,15 @@ Use `very_good dart test`, not `very_good test`: the latter targets Flutter and 
 - `pubspec.lock` is versioned (executable package); `dependencies` go before `dev_dependencies` in `pubspec.yaml`.
 - stdio server: stdout is reserved for JSON-RPC; send logs/diagnostics to stderr.
 
+## Git workflow
+
+`main` is protected by a GitHub ruleset: no direct pushes, force pushes or deletion. Every change goes through a pull request:
+
+1. Branch off `main` and commit there.
+2. Push and open a PR whose title is a Conventional Commit (`gh pr create --fill`); it becomes the squash commit title on `main`.
+3. Merge only when the required checks pass: `build / build`, `spell-check / build`, `semantic_pull_request / build`. No approvals are needed.
+4. Squash is the only merge method (`gh pr merge --squash --delete-branch`); the remote branch is deleted automatically.
+
 ## Data
 
 `data/tickets.json` is the fixture: array of incidents with `id` (`INC-1xx`), `title`, `status` (`abierta`/`resuelta`…), `impact` (`bajo`/`alto`), `workaround` (bool), `created` (ISO date), `detail`. Treat it as read-only input.
