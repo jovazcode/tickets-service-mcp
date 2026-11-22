@@ -10,7 +10,7 @@ executables:
   tickets_service_mcp:
 
 dependencies:
-  dart_mcp: ^0.5.2
+  mcp_dart: ^2.4.4
 
 dev_dependencies:
   test: ^1.32.0
