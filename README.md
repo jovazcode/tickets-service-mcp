@@ -8,13 +8,14 @@
 Servidor [Model Context Protocol (MCP)][mcp_link] local, escrito en Dart, que expone una mesa de incidencias ficticia a clientes MCP (Claude Code, Claude Desktop, MCP Inspector…) a través de **stdio**.
 
 > [!NOTE]
-> Proyecto en fase inicial: el esqueleto, las dependencias y la CI están listos, pero el servidor aún no expone herramientas.
+> Fase 1 (solo lectura): búsqueda y consulta de incidencias y documentos de proceso. La creación, edición y borrado llegarán en las siguientes fases.
 
 ## Índice
 
 - [Características](#características-)
 - [Requisitos](#requisitos-)
 - [Instalación](#instalación-)
+- [Herramientas y recursos](#herramientas-y-recursos-)
 - [Uso](#uso-)
 - [Datos](#datos-)
 - [Desarrollo](#desarrollo-)
@@ -45,6 +46,17 @@ cd tickets-service-mcp
 dart pub get
 ```
 
+## Herramientas y recursos 🧰
+
+| Tipo | Nombre | Qué hace |
+| --- | --- | --- |
+| Tool | `buscar_incidencias` | Busca por texto libre (ID, título y detalle, sin distinguir mayúsculas ni tildes) y filtra por `status`, `impact` y `workaround`. Paginación con `limit` (1-100, por defecto 20) y `offset`. Devuelve `{items, total}`. |
+| Tool | `obtener_incidencia` | Devuelve la ficha completa de una incidencia por `id` (`INC-104`). Si no existe, error `NOT_FOUND`. |
+| Resource | `docs://proceso_apertura` | Cómo abrir una incidencia ([`docs/proceso_apertura.md`](docs/proceso_apertura.md)). |
+| Resource | `docs://proceso_triaje` | Cómo clasificar y priorizar ([`docs/proceso_triaje.md`](docs/proceso_triaje.md)). |
+
+Las herramientas devuelven resultados estructurados (`structuredContent`) y los errores de negocio como resultado con `isError: true` y el texto `CODIGO: mensaje`, para que el modelo pueda corregirse.
+
 ## Uso 🚀
 
 Un servidor MCP por stdio no tiene interfaz propia: lo arranca un cliente MCP y se comunica con él mediante JSON-RPC por `stdin`/`stdout`.
@@ -57,8 +69,10 @@ dart compile exe bin/tickets_service_mcp.dart -o build/tickets_service_mcp
 
 ### Claude Code
 
+Este repositorio ya declara el servidor `mesa-incidencias` en [`.mcp.json`](.mcp.json) (con `dart run`), así que al abrir el proyecto en Claude Code basta con aprobarlo y comprobarlo con `/mcp`. Para usarlo desde otros proyectos, registra el ejecutable compilado:
+
 ```sh
-claude mcp add tickets-service -- /ruta/absoluta/a/build/tickets_service_mcp
+claude mcp add mesa-incidencias -- /ruta/absoluta/a/build/tickets_service_mcp
 ```
 
 ### Otros clientes (configuración JSON)
@@ -66,12 +80,21 @@ claude mcp add tickets-service -- /ruta/absoluta/a/build/tickets_service_mcp
 ```json
 {
   "mcpServers": {
-    "tickets-service": {
+    "mesa-incidencias": {
       "command": "/ruta/absoluta/a/build/tickets_service_mcp"
     }
   }
 }
 ```
+
+### Configuración
+
+El servidor busca los datos y documentos relativos a la raíz del proyecto (carpeta padre de `bin/` o `build/`), sea cual sea el directorio desde el que se lance. Se pueden sobrescribir con variables de entorno:
+
+| Variable | Por defecto |
+| --- | --- |
+| `MESA_INCIDENCIAS_DATA` | `data/tickets.json` |
+| `MESA_INCIDENCIAS_DOCS` | `docs` |
 
 ### MCP Inspector
 
@@ -106,10 +129,14 @@ open coverage/html/index.html
 ### Estructura
 
 ```text
-bin/     Punto de entrada del servidor (stdio)
-lib/     API pública (barrel) e implementación en lib/src/
-test/    Tests, con la misma estructura que lib/
-data/    Fixture de incidencias
+bin/                 Punto de entrada: lee la configuración y conecta stdio
+lib/src/domain/      Modelo de incidencia, enums y errores de negocio
+lib/src/store/       Carga y acceso a las incidencias
+lib/src/services/    Búsqueda (funciones puras)
+lib/src/mcp/         Adaptadores MCP: servidor, tools y resources
+test/                Tests, con la misma estructura que lib/
+data/                Fixture de incidencias
+docs/                Documentos de proceso publicados como recursos
 ```
 
 ## Integración continua 🤖
