@@ -14,6 +14,23 @@ enum IncidentStatus {
   /// Valor serializado en JSON.
   final String value;
 
+  /// Si la incidencia sigue pendiente (`abierta` o `en_progreso`).
+  bool get isActive => this != resuelta;
+
+  /// Estados a los que se puede pasar desde este.
+  ///
+  /// - `abierta` → `en_progreso` o `resuelta`.
+  /// - `en_progreso` → `resuelta`, o de vuelta a `abierta`.
+  /// - `resuelta` → `abierta` (reabrir; exige motivo).
+  Set<IncidentStatus> get allowedNext => switch (this) {
+    abierta => const {enProgreso, resuelta},
+    enProgreso => const {abierta, resuelta},
+    resuelta => const {abierta},
+  };
+
+  /// Si pasar de este estado a [next] es reabrir una incidencia resuelta.
+  bool isReopening(IncidentStatus next) => this == resuelta && next.isActive;
+
   /// Todos los valores serializados, en orden de declaración.
   static List<String> get wireValues => [for (final s in values) s.value];
 

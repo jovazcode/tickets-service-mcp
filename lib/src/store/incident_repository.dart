@@ -163,7 +163,7 @@ class IncidentRepository {
   }
 
   /// Aplica [patch] a la incidencia [id] y la guarda con la revisión
-  /// siguiente.
+  /// siguiente. El estado no se cambia aquí, sino con [changeStatus].
   ///
   /// [expectedRevision] es la revisión que se leyó antes de editar; si la
   /// incidencia ha cambiado desde entonces, no se aplica nada.
@@ -174,7 +174,56 @@ class IncidentRepository {
     String id, {
     required int expectedRevision,
     required IncidentPatch patch,
+  }) => _mutate(id, expectedRevision, patch.applyTo);
+
+  /// Cambia el estado de la incidencia [id] a [status], respetando las
+  /// transiciones de [IncidentStatus.allowedNext].
+  ///
+  /// Reabrir una incidencia resuelta exige [reason].
+  ///
+  /// Lanza [DomainException] con código `WRITE_DISABLED`, `NOT_FOUND`,
+  /// `REVISION_CONFLICT`, `INVALID_TRANSITION`, `REASON_REQUIRED`,
+  /// `VALIDATION_ERROR` o `PERSISTENCE_ERROR`.
+  Future<Incident> changeStatus(
+    String id, {
+    required int expectedRevision,
+    required IncidentStatus status,
+    String? reason,
   }) async {
+    if (reason != null) checkText('reason', reason, maxReasonLength);
+    return await _mutate(id, expectedRevision, (current) {
+      if (current.status == status) {
+        throw DomainException(
+          'INVALID_TRANSITION',
+          '$id ya está en estado ${status.value}',
+        );
+      }
+      if (!current.status.allowedNext.contains(status)) {
+        final allowed = current.status.allowedNext.map((s) => s.value);
+        throw DomainException(
+          'INVALID_TRANSITION',
+          'No se puede pasar de ${current.status.value} a ${status.value}. '
+              'Desde ${current.status.value} se permite: '
+              '${allowed.join(', ')}.',
+        );
+      }
+      if (current.status.isReopening(status) && reason == null) {
+        throw DomainException(
+          'REASON_REQUIRED',
+          'Para reabrir $id indica el motivo (reason)',
+        );
+      }
+      return current.copyWith(status: status, revision: current.revision + 1);
+    });
+  }
+
+  /// Aplica [change] a la incidencia [id] si su revisión es
+  /// [expectedRevision], y guarda el resultado.
+  Future<Incident> _mutate(
+    String id,
+    int expectedRevision,
+    Incident Function(Incident current) change,
+  ) async {
     _ensureWritable();
     return await _serialized(() async {
       final current = getById(id);
@@ -185,7 +234,7 @@ class IncidentRepository {
               '$expectedRevision. Vuelve a consultarla antes de editar.',
         );
       }
-      final updated = patch.applyTo(current);
+      final updated = change(current);
       final incidents = [
         for (final incident in _incidents)
           if (incident.id == id) updated else incident,

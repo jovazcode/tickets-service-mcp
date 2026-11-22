@@ -25,12 +25,13 @@ void main() {
     test('applyTo cambia solo lo indicado y sube la revisión', () {
       final updated = const IncidentPatch(
         detail: '  Nuevo detalle ',
-        status: IncidentStatus.resuelta,
+        impact: Impact.alto,
       ).applyTo(base);
       expect(updated.detail, 'Nuevo detalle');
-      expect(updated.status, IncidentStatus.resuelta);
+      expect(updated.impact, Impact.alto);
+      expect(updated.status, base.status);
       expect(updated.title, base.title);
-      expect(updated.impact, base.impact);
+      expect(updated.workaround, base.workaround);
       expect(updated.revision, 2);
     });
 

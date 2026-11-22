@@ -1,7 +1,6 @@
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:tickets_service_mcp/src/domain/impact.dart';
 import 'package:tickets_service_mcp/src/domain/incident_patch.dart';
-import 'package:tickets_service_mcp/src/domain/incident_status.dart';
 import 'package:tickets_service_mcp/src/domain/text_rules.dart';
 import 'package:tickets_service_mcp/src/mcp/schemas.dart';
 import 'package:tickets_service_mcp/src/mcp/tools/base_tool.dart';
@@ -25,8 +24,9 @@ class UpdateIncidentTool extends BaseTool {
 
   @override
   String get description =>
-      'Cambia uno o varios campos de una incidencia (title, detail, status, '
-      'impact, workaround); los que no se indiquen no cambian. Exige '
+      'Cambia uno o varios campos de una incidencia (title, detail, impact, '
+      'workaround); los que no se indiquen no cambian. El estado se cambia '
+      'con cambiar_estado. Exige '
       'expectedRevision, la revisión leída con obtener_incidencia: si la '
       'incidencia ha cambiado desde entonces responde REVISION_CONFLICT y no '
       'aplica nada; vuelve a consultarla y confirma con el usuario. Requiere '
@@ -50,7 +50,6 @@ class UpdateIncidentTool extends BaseTool {
         maxLength: maxDetailLength,
         description: 'Nuevo detalle',
       ),
-      'status': statusSchema(description: 'Nuevo estado'),
       'impact': impactSchema(description: 'Nuevo impacto'),
       'workaround': JsonSchema.boolean(
         description: 'Si ahora existe una alternativa temporal',
@@ -71,7 +70,6 @@ class UpdateIncidentTool extends BaseTool {
 
   @override
   Future<Map<String, dynamic>> run(Map<String, dynamic> args) async {
-    final status = args['status'];
     final impact = args['impact'];
     final incident = await _repository.update(
       args['id'] as String,
@@ -79,7 +77,6 @@ class UpdateIncidentTool extends BaseTool {
       patch: IncidentPatch(
         title: args['title'] as String?,
         detail: args['detail'] as String?,
-        status: status == null ? null : IncidentStatus.parse(status),
         impact: impact == null ? null : Impact.parse(impact),
         workaround: args['workaround'] as bool?,
       ),

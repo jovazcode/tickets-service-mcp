@@ -19,6 +19,14 @@ El impacto lo evalúa el equipo con el detalle completo. No se deduce solo del t
 
 Se consideran **activas** las incidencias `abierta` y `en_progreso`.
 
+Transiciones permitidas:
+
+| Desde | Hacia |
+|-------|-------|
+| `abierta` | `en_progreso`, `resuelta` |
+| `en_progreso` | `resuelta`, `abierta` (devolver a la cola) |
+| `resuelta` | `abierta` (reabrir; hay que indicar el motivo) |
+
 ## 3. Orden de atención
 
 Entre las incidencias activas:

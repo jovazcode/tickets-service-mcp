@@ -240,12 +240,13 @@ void main() {
         'INC-102',
         expectedRevision: 1,
         patch: const IncidentPatch(
-          status: IncidentStatus.enProgreso,
+          workaround: true,
           title: '  Botón con color incorrecto  ',
         ),
       );
       expect(updated.revision, 2);
-      expect(updated.status, IncidentStatus.enProgreso);
+      expect(updated.workaround, isTrue);
+      expect(updated.status, IncidentStatus.abierta);
       expect(updated.title, 'Botón con color incorrecto');
       expect(updated.detail, 'Defecto visual. No impide completar tareas.');
 
@@ -374,6 +375,96 @@ void main() {
         throwsDomain('NOT_FOUND'),
       );
       expect(repository.all, hasLength(4));
+    });
+  });
+
+  group('changeStatus', () {
+    Future<Incident> change(
+      IncidentRepository repository,
+      String id,
+      IncidentStatus status, {
+      String? reason,
+    }) => repository.changeStatus(
+      id,
+      expectedRevision: repository.getById(id).revision,
+      status: status,
+      reason: reason,
+    );
+
+    test('recorre abierta → en_progreso → resuelta y persiste', () async {
+      final repository = await openRepo();
+      await change(repository, 'INC-101', IncidentStatus.enProgreso);
+      final resolved = await change(
+        repository,
+        'INC-101',
+        IncidentStatus.resuelta,
+      );
+      expect(resolved.status, IncidentStatus.resuelta);
+      expect(resolved.revision, 3);
+      expect(
+        (await openRepo(writeEnabled: false)).getById('INC-101').status,
+        IncidentStatus.resuelta,
+      );
+    });
+
+    test('permite devolver a la cola y resolver directamente', () async {
+      final repository = await openRepo();
+      await change(repository, 'INC-101', IncidentStatus.enProgreso);
+      await change(repository, 'INC-101', IncidentStatus.abierta);
+      final resolved = await change(
+        repository,
+        'INC-101',
+        IncidentStatus.resuelta,
+      );
+      expect(resolved.status, IncidentStatus.resuelta);
+    });
+
+    test('reabrir exige motivo', () async {
+      final repository = await openRepo();
+      await expectLater(
+        change(repository, 'INC-103', IncidentStatus.abierta),
+        throwsDomain('REASON_REQUIRED'),
+      );
+      final reopened = await change(
+        repository,
+        'INC-103',
+        IncidentStatus.abierta,
+        reason: 'Ha vuelto a fallar',
+      );
+      expect(reopened.status, IncidentStatus.abierta);
+    });
+
+    test('rechaza transiciones no permitidas y el mismo estado', () async {
+      final repository = await openRepo();
+      await expectLater(
+        change(repository, 'INC-103', IncidentStatus.enProgreso),
+        throwsA(
+          isA<DomainException>()
+              .having((e) => e.code, 'code', 'INVALID_TRANSITION')
+              .having((e) => e.message, 'message', contains('abierta')),
+        ),
+      );
+      await expectLater(
+        change(repository, 'INC-101', IncidentStatus.abierta),
+        throwsDomain('INVALID_TRANSITION'),
+      );
+      expect(repository.getById('INC-103').revision, 1);
+    });
+
+    test('valida el motivo y la revisión', () async {
+      final repository = await openRepo();
+      await expectLater(
+        change(repository, 'INC-103', IncidentStatus.abierta, reason: ' '),
+        throwsDomain('VALIDATION_ERROR'),
+      );
+      await expectLater(
+        repository.changeStatus(
+          'INC-101',
+          expectedRevision: 7,
+          status: IncidentStatus.enProgreso,
+        ),
+        throwsDomain('REVISION_CONFLICT'),
+      );
     });
   });
 }

@@ -11,4 +11,5 @@ export 'src/domain/text_rules.dart';
 export 'src/mcp/server.dart';
 export 'src/server_config.dart';
 export 'src/services/incident_search.dart';
+export 'src/services/triage.dart';
 export 'src/store/incident_repository.dart';
