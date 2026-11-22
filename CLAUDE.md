@@ -17,6 +17,7 @@ Current state (phase 4, first block): tools `buscar_incidencias`, `obtener_incid
 - `bin/` only reads config (`ServerConfig.fromEnvironment`, paths relative to the project root, overridable with `MESA_INCIDENCIAS_DATA` / `MESA_INCIDENCIAS_DOCS`) and connects `StdioServerTransport`; it is not covered by tests, so keep logic out of it.
 - Clients must launch the AOT binary `build/tickets_service_mcp` (`dart compile exe bin/tickets_service_mcp.dart -o build/tickets_service_mcp`; recompile after changes). While Claude Code runs it the file is busy: compile to `build/tickets_service_mcp.new` and `mv` it over, then reconnect in `/mcp`. `dart run` takes ~3 s to start, Claude Code's protocol probe times out and `/mcp` stays at "Connecting...".
 - Tests drive the server end to end with an in-process `McpClient` over `IOStreamTransport`; reuse `test/helpers/harness.dart` (temporary working store, `writeEnabled` option).
+- CI analyzes with Dart 3.13.0 (the `pubspec` minimum), which flags some lints the local 3.14 analyzer misses (e.g. `avoid_positional_boolean_parameters` on local functions); avoid positional `bool` parameters everywhere.
 - Dart 3.14 lints require the new constructor syntax (`const new(...)`, `factory fromJson(...)`, enum `new(...)`); `dart fix --apply` converts it.
 
 ## Commands

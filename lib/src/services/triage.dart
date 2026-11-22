@@ -15,11 +15,11 @@ const triageCriteria = [
 /// Compara dos incidencias según [triageCriteria] (sin el filtro de
 /// activas): negativo si [a] debe atenderse antes que [b].
 int comparePriority(Incident a, Incident b) {
-  int rank(bool first) => first ? 0 : 1;
-  final byImpact = rank(a.impact == Impact.alto)
-      .compareTo(rank(b.impact == Impact.alto));
+  int impactRank(Incident i) => i.impact == Impact.alto ? 0 : 1;
+  int workaroundRank(Incident i) => i.workaround ? 1 : 0;
+  final byImpact = impactRank(a).compareTo(impactRank(b));
   if (byImpact != 0) return byImpact;
-  final byWorkaround = rank(!a.workaround).compareTo(rank(!b.workaround));
+  final byWorkaround = workaroundRank(a).compareTo(workaroundRank(b));
   if (byWorkaround != 0) return byWorkaround;
   final byCreated = a.created.compareTo(b.created);
   if (byCreated != 0) return byCreated;
