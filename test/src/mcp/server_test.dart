@@ -23,6 +23,8 @@ void main() {
         'buscar_incidencias',
         'obtener_incidencia',
         'crear_incidencia',
+        'actualizar_incidencia',
+        'eliminar_incidencia',
       ]),
     );
     expect(tools.values.every((t) => t.title!.isNotEmpty), isTrue);
@@ -30,13 +32,22 @@ void main() {
     expect(tools['obtener_incidencia']!.annotations?.readOnlyHint, isTrue);
     expect(tools['crear_incidencia']!.annotations?.readOnlyHint, isFalse);
     expect(tools['crear_incidencia']!.annotations?.destructiveHint, isFalse);
+    expect(
+      tools['actualizar_incidencia']!.annotations?.destructiveHint,
+      isFalse,
+    );
+    expect(tools['eliminar_incidencia']!.annotations?.destructiveHint, isTrue);
   });
 
   test('las instrucciones indican el modo de escritura', () async {
     expect(harness.client.getInstructions(), contains('solo lectura'));
     expect(
-      serverInstructions(writeEnabled: true),
-      contains('escritura está habilitada'),
+      serverInstructions(writeEnabled: true, deleteEnabled: false),
+      allOf(contains('escritura está habilitada'), contains('DELETE_DISABLED')),
+    );
+    expect(
+      serverInstructions(writeEnabled: true, deleteEnabled: true),
+      contains('borrado está habilitado'),
     );
   });
 

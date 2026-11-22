@@ -30,6 +30,10 @@ final JsonObject incidentSchema = JsonSchema.object(
     'workaround': JsonSchema.boolean(),
     'created': JsonSchema.string(description: 'Fecha ISO YYYY-MM-DD'),
     'detail': JsonSchema.string(),
+    'revision': JsonSchema.integer(
+      minimum: 1,
+      description: 'Versión actual; necesaria para actualizar',
+    ),
   },
   required: [
     'id',
@@ -39,5 +43,6 @@ final JsonObject incidentSchema = JsonSchema.object(
     'workaround',
     'created',
     'detail',
+    'revision',
   ],
 );

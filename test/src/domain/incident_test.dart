@@ -9,6 +9,7 @@ Map<String, dynamic> validJson() => {
   'workaround': true,
   'created': '2026-09-01',
   'detail': 'Detalle',
+  'revision': 3,
 };
 
 void main() {
@@ -28,7 +29,35 @@ void main() {
       expect(incident.workaround, isTrue);
     });
 
+    test('sin revision (como en la fixture) empieza en 1', () {
+      expect(Incident.fromJson(validJson()..remove('revision')).revision, 1);
+    });
+
+    test('copyWith cambia solo lo indicado', () {
+      final original = Incident.fromJson(validJson());
+      final copy = original.copyWith(
+        title: 'Nuevo',
+        status: IncidentStatus.resuelta,
+        impact: Impact.alto,
+        workaround: false,
+        detail: 'Otro',
+        revision: 4,
+      );
+      expect(copy.toJson(), {
+        ...validJson(),
+        'title': 'Nuevo',
+        'status': 'resuelta',
+        'impact': 'alto',
+        'workaround': false,
+        'detail': 'Otro',
+        'revision': 4,
+      });
+      expect(original.copyWith().toJson(), original.toJson());
+    });
+
     final invalid = <String, void Function(Map<String, dynamic>)>{
+      'revisión no entera': (json) => json['revision'] = '2',
+      'revisión menor que 1': (json) => json['revision'] = 0,
       'falta un campo': (json) => json.remove('title'),
       'tipo incorrecto': (json) => json['workaround'] = 'si',
       'ID con formato inválido': (json) => json['id'] = 'TCK-1',

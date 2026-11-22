@@ -1,5 +1,5 @@
-import 'package:tickets_service_mcp/src/domain/domain_exception.dart';
 import 'package:tickets_service_mcp/src/domain/impact.dart';
+import 'package:tickets_service_mcp/src/domain/text_rules.dart';
 
 /// {@template new_incident}
 /// Datos que aporta quien abre una incidencia. El ID, la fecha y el estado
@@ -13,12 +13,6 @@ class NewIncident {
     required this.impact,
     this.workaround = false,
   });
-
-  /// Longitud máxima del título.
-  static const maxTitleLength = 200;
-
-  /// Longitud máxima del detalle.
-  static const maxDetailLength = 5000;
 
   /// Resumen breve del problema.
   final String title;
@@ -34,28 +28,12 @@ class NewIncident {
 
   /// Devuelve una copia con el texto recortado y comprobado.
   ///
-  /// Lanza [DomainException] con código `VALIDATION_ERROR` si el título o el
+  /// Lanza `DomainException` con código `VALIDATION_ERROR` si el título o el
   /// detalle están vacíos o superan su longitud máxima.
-  NewIncident validated() {
-    String check(String field, String value, int max) {
-      final trimmed = value.trim();
-      if (trimmed.isEmpty) {
-        throw DomainException('VALIDATION_ERROR', 'El campo $field está vacío');
-      }
-      if (trimmed.length > max) {
-        throw DomainException(
-          'VALIDATION_ERROR',
-          'El campo $field supera $max caracteres',
-        );
-      }
-      return trimmed;
-    }
-
-    return NewIncident(
-      title: check('title', title, maxTitleLength),
-      detail: check('detail', detail, maxDetailLength),
-      impact: impact,
-      workaround: workaround,
-    );
-  }
+  NewIncident validated() => NewIncident(
+    title: checkText('title', title, maxTitleLength),
+    detail: checkText('detail', detail, maxDetailLength),
+    impact: impact,
+    workaround: workaround,
+  );
 }

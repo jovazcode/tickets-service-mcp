@@ -28,7 +28,7 @@ void main() {
         impact: Impact.bajo,
       ),
       'título demasiado largo': NewIncident(
-        title: 'x' * (NewIncident.maxTitleLength + 1),
+        title: 'x' * (maxTitleLength + 1),
         detail: 'd',
         impact: Impact.bajo,
       ),

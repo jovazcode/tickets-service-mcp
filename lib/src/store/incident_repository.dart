@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:tickets_service_mcp/src/domain/domain_exception.dart';
 import 'package:tickets_service_mcp/src/domain/incident.dart';
+import 'package:tickets_service_mcp/src/domain/incident_patch.dart';
 import 'package:tickets_service_mcp/src/domain/incident_status.dart';
 import 'package:tickets_service_mcp/src/domain/new_incident.dart';
+import 'package:tickets_service_mcp/src/domain/text_rules.dart';
 
 /// {@template incident_repository}
 /// Acceso a las incidencias de la mesa.
@@ -18,6 +20,7 @@ class IncidentRepository {
   ///
   /// [nextId] es el número del siguiente ID; por defecto, el mayor existente
   /// más uno. Si [writeEnabled] es `true`, [storePath] es obligatorio.
+  /// Borrar exige además [_deleteEnabled].
   ///
   /// Lanza [FormatException] si hay IDs duplicados o si [nextId] no es mayor
   /// que todos los existentes.
@@ -26,6 +29,7 @@ class IncidentRepository {
     int? nextId,
     String? storePath,
     bool writeEnabled = false,
+    this._deleteEnabled = false,
     DateTime Function()? clock,
   }) : assert(!writeEnabled || storePath != null, 'storePath requerido'),
        _incidents = List.unmodifiable(incidents),
@@ -60,6 +64,7 @@ class IncidentRepository {
     required String fixturePath,
     required String storePath,
     bool writeEnabled = false,
+    bool deleteEnabled = false,
     DateTime Function()? clock,
   }) async {
     final store = File(storePath);
@@ -77,6 +82,7 @@ class IncidentRepository {
         nextId: decoded['nextId'] as int,
         storePath: storePath,
         writeEnabled: writeEnabled,
+        deleteEnabled: deleteEnabled,
         clock: clock,
       );
     }
@@ -89,6 +95,7 @@ class IncidentRepository {
       _parseIncidents(decoded),
       storePath: storePath,
       writeEnabled: writeEnabled,
+      deleteEnabled: deleteEnabled,
       clock: clock,
     );
   }
@@ -107,6 +114,7 @@ class IncidentRepository {
   int _nextId;
   final String? _storePath;
   final bool _writeEnabled;
+  final bool _deleteEnabled;
   final DateTime Function() _clock;
   Future<void> _writeQueue = Future.value();
 
@@ -115,6 +123,9 @@ class IncidentRepository {
 
   /// Si se permiten operaciones de escritura.
   bool get writeEnabled => _writeEnabled;
+
+  /// Si se permite borrar (requiere también [writeEnabled]).
+  bool get deleteEnabled => _writeEnabled && _deleteEnabled;
 
   /// Devuelve la incidencia con [id].
   ///
@@ -148,6 +159,69 @@ class IncidentRepository {
       _incidents = List.unmodifiable(incidents);
       _nextId++;
       return incident;
+    });
+  }
+
+  /// Aplica [patch] a la incidencia [id] y la guarda con la revisión
+  /// siguiente.
+  ///
+  /// [expectedRevision] es la revisión que se leyó antes de editar; si la
+  /// incidencia ha cambiado desde entonces, no se aplica nada.
+  ///
+  /// Lanza [DomainException] con código `WRITE_DISABLED`, `NOT_FOUND`,
+  /// `REVISION_CONFLICT`, `VALIDATION_ERROR` o `PERSISTENCE_ERROR`.
+  Future<Incident> update(
+    String id, {
+    required int expectedRevision,
+    required IncidentPatch patch,
+  }) async {
+    _ensureWritable();
+    return await _serialized(() async {
+      final current = getById(id);
+      if (current.revision != expectedRevision) {
+        throw DomainException(
+          'REVISION_CONFLICT',
+          '$id ha cambiado: su revisión actual es ${current.revision}, no '
+              '$expectedRevision. Vuelve a consultarla antes de editar.',
+        );
+      }
+      final updated = patch.applyTo(current);
+      final incidents = [
+        for (final incident in _incidents)
+          if (incident.id == id) updated else incident,
+      ];
+      await _persist(incidents, _nextId);
+      _incidents = List.unmodifiable(incidents);
+      return updated;
+    });
+  }
+
+  /// Borra físicamente la incidencia [id] y devuelve cómo estaba.
+  ///
+  /// Su ID no se reutiliza. [reason] explica el motivo y no puede estar
+  /// vacío.
+  ///
+  /// Lanza [DomainException] con código `WRITE_DISABLED`, `DELETE_DISABLED`,
+  /// `VALIDATION_ERROR`, `NOT_FOUND` o `PERSISTENCE_ERROR`.
+  Future<Incident> delete(String id, {required String reason}) async {
+    _ensureWritable();
+    if (!_deleteEnabled) {
+      throw const DomainException(
+        'DELETE_DISABLED',
+        'El borrado está desactivado. Arranca el servidor con '
+            'MESA_INCIDENCIAS_DELETE_ENABLED=1 para permitirlo.',
+      );
+    }
+    checkText('reason', reason, maxReasonLength);
+    return await _serialized(() async {
+      final deleted = getById(id);
+      final incidents = [
+        for (final incident in _incidents)
+          if (incident.id != id) incident,
+      ];
+      await _persist(incidents, _nextId);
+      _incidents = List.unmodifiable(incidents);
+      return deleted;
     });
   }
 

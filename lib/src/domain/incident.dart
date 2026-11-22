@@ -17,6 +17,7 @@ class Incident {
     required this.workaround,
     required this.created,
     required this.detail,
+    this.revision = 1,
   });
 
   /// Crea una incidencia a partir de su representación JSON.
@@ -40,6 +41,10 @@ class Incident {
     if (DateTime.tryParse(created) == null) {
       throw FormatException('Fecha "created" inválida: $created');
     }
+    final revision = json['revision'] ?? 1;
+    if (revision is! int || revision < 1) {
+      throw FormatException('Revisión inválida: $revision');
+    }
     return Incident(
       id: id,
       title: field<String>('title'),
@@ -48,6 +53,7 @@ class Incident {
       workaround: field<bool>('workaround'),
       created: created,
       detail: field<String>('detail'),
+      revision: revision,
     );
   }
 
@@ -72,7 +78,30 @@ class Incident {
   /// Descripción completa.
   final String detail;
 
-  /// Representación JSON, con los mismos nombres de campo que la fixture.
+  /// Número de versión: empieza en 1 y sube con cada cambio. Sirve para
+  /// detectar ediciones concurrentes.
+  final int revision;
+
+  /// Devuelve una copia con los campos indicados cambiados.
+  Incident copyWith({
+    String? title,
+    IncidentStatus? status,
+    Impact? impact,
+    bool? workaround,
+    String? detail,
+    int? revision,
+  }) => Incident(
+    id: id,
+    title: title ?? this.title,
+    status: status ?? this.status,
+    impact: impact ?? this.impact,
+    workaround: workaround ?? this.workaround,
+    created: created,
+    detail: detail ?? this.detail,
+    revision: revision ?? this.revision,
+  );
+
+  /// Representación JSON: los campos de la fixture más `revision`.
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -81,5 +110,6 @@ class Incident {
     'workaround': workaround,
     'created': created,
     'detail': detail,
+    'revision': revision,
   };
 }

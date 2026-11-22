@@ -8,7 +8,7 @@
 Servidor [Model Context Protocol (MCP)][mcp_link] local, escrito en Dart, que expone una mesa de incidencias ficticia a clientes MCP (Claude Code, Claude Desktop, MCP Inspector…) a través de **stdio**.
 
 > [!NOTE]
-> Fase 2: búsqueda, consulta y creación de incidencias, documentos de proceso y prompt de apertura. La edición y el borrado llegarán en la siguiente fase.
+> Fase 3: CRUD completo (búsqueda, consulta, creación, edición con control de revisión y borrado confirmado), documentos de proceso y prompt de apertura.
 
 ## Índice
 
@@ -53,11 +53,15 @@ dart pub get
 | Tool | `buscar_incidencias` | Busca por texto libre (ID, título y detalle, sin distinguir mayúsculas ni tildes) y filtra por `status`, `impact` y `workaround`. Paginación con `limit` (1-100, por defecto 20) y `offset`. Devuelve `{items, total}`. |
 | Tool | `obtener_incidencia` | Devuelve la ficha completa de una incidencia por `id` (`INC-104`). Si no existe, error `NOT_FOUND`. |
 | Tool | `crear_incidencia` | Abre una incidencia (`title`, `detail`, `impact`, `workaround` opcional) en estado `abierta` con la fecha de hoy y el siguiente ID. Requiere escritura habilitada; si no, `WRITE_DISABLED`. Valida el texto (`VALIDATION_ERROR`). |
+| Tool | `actualizar_incidencia` | Cambia uno o varios campos (`title`, `detail`, `status`, `impact`, `workaround`). Exige `expectedRevision`, la revisión leída antes de editar: si la incidencia ha cambiado entretanto responde `REVISION_CONFLICT` y no aplica nada. Requiere escritura. |
+| Tool | `eliminar_incidencia` | Borra físicamente una incidencia (no se puede deshacer; su ID no se reutiliza). Exige `confirm: true` (`CONFIRMATION_REQUIRED`) y `reason`. Requiere escritura y además borrado (`DELETE_DISABLED`). |
 | Resource | `docs://proceso_apertura` | Cómo abrir una incidencia ([`docs/proceso_apertura.md`](docs/proceso_apertura.md)). |
 | Resource | `docs://proceso_triaje` | Cómo clasificar y priorizar ([`docs/proceso_triaje.md`](docs/proceso_triaje.md)). |
 | Prompt | `abrir_incidencia` | Guía al modelo por el proceso de apertura (incrusta `docs://proceso_apertura`): buscar duplicados, completar datos, confirmar contigo y crear. Argumento opcional `problema`. |
 
-Las herramientas de escritura aparecen siempre en el catálogo, pero el servidor las rechaza salvo que se arranque con `MESA_INCIDENCIAS_WRITE_ENABLED=1`: el control está en el servidor, no en que el modelo se porte bien. Las instrucciones que el servidor envía al cliente indican el modo activo.
+Cada incidencia lleva un campo `revision` que empieza en 1 y sube con cada cambio; las que no lo tienen (como las de la fixture) se leen con revisión 1.
+
+Las herramientas de escritura aparecen siempre en el catálogo, pero el servidor las rechaza salvo que se arranque con `MESA_INCIDENCIAS_WRITE_ENABLED=1` (y, para borrar, también `MESA_INCIDENCIAS_DELETE_ENABLED=1`): el control está en el servidor, no en que el modelo se porte bien. Las instrucciones que el servidor envía al cliente indican el modo activo.
 
 Las herramientas devuelven resultados estructurados (`structuredContent`) y los errores de negocio como resultado con `isError: true` y el texto `CODIGO: mensaje`, para que el modelo pueda corregirse.
 
@@ -106,15 +110,24 @@ El servidor busca los datos y documentos relativos a la raíz del proyecto (carp
 | `MESA_INCIDENCIAS_STORE` | `data/tickets.local.json` (almacén de trabajo) |
 | `MESA_INCIDENCIAS_DOCS` | `docs` |
 | `MESA_INCIDENCIAS_WRITE_ENABLED` | vacío: solo lectura. `1`, `true`, `yes` u `on` habilitan la escritura |
+| `MESA_INCIDENCIAS_DELETE_ENABLED` | vacío: sin borrado. Con los mismos valores lo habilita (requiere también escritura) |
 
 ### Escritura y almacén de trabajo
 
 Con la escritura habilitada, el primer cambio copia la fixture al almacén de trabajo (`{nextId, incidents}`), que se guarda de forma atómica (fichero temporal + renombrado). Al arrancar, si el almacén existe se usa en lugar de la fixture, también en solo lectura, para no perder lo creado. Para volver al estado inicial, borra `data/tickets.local.json`.
 
-En Claude Code, `.mcp.json` pasa al servidor el valor de `MESA_INCIDENCIAS_WRITE_ENABLED` del entorno en el que arrancas Claude Code (por defecto `0`):
+En Claude Code, `.mcp.json` pasa al servidor los valores de `MESA_INCIDENCIAS_WRITE_ENABLED` y `MESA_INCIDENCIAS_DELETE_ENABLED` del entorno en el que arrancas Claude Code (por defecto `0`):
 
 ```sh
 MESA_INCIDENCIAS_WRITE_ENABLED=1 claude    # o arranca VS Code con esa variable
+```
+
+Para habilitarlos solo para ti y de forma permanente, registra el servidor en ámbito local (tiene prioridad sobre `.mcp.json` y no se versiona):
+
+```sh
+claude mcp add --scope local mesa-incidencias \
+  -e MESA_INCIDENCIAS_WRITE_ENABLED=1 -e MESA_INCIDENCIAS_DELETE_ENABLED=1 \
+  -- "$PWD/build/tickets_service_mcp"
 ```
 
 ### MCP Inspector

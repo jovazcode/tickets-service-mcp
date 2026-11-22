@@ -37,13 +37,16 @@ void main() {
 
   tearDown(() => tempDir.delete(recursive: true));
 
-  Future<IncidentRepository> openRepo({bool writeEnabled = true}) =>
-      IncidentRepository.open(
-        fixturePath: fixturePath,
-        storePath: storePath,
-        writeEnabled: writeEnabled,
-        clock: () => DateTime(2026, 11, 22, 10),
-      );
+  Future<IncidentRepository> openRepo({
+    bool writeEnabled = true,
+    bool deleteEnabled = false,
+  }) => IncidentRepository.open(
+    fixturePath: fixturePath,
+    storePath: storePath,
+    writeEnabled: writeEnabled,
+    deleteEnabled: deleteEnabled,
+    clock: () => DateTime(2026, 11, 22, 10),
+  );
 
   Future<String> writeFile(String name, String content) async {
     final file = File(p.join(tempDir.path, name));
@@ -148,6 +151,7 @@ void main() {
         'workaround': false,
         'created': '2026-11-22',
         'detail': 'Ninguna cuenta puede imprimir',
+        'revision': 1,
       });
       expect(repository.getById('INC-105').title, 'Falla la impresión');
     });
@@ -226,6 +230,150 @@ void main() {
         repository.create(draft),
         throwsDomain('PERSISTENCE_ERROR'),
       );
+    });
+  });
+
+  group('update', () {
+    test('aplica el patch, sube la revisión y persiste', () async {
+      final repository = await openRepo();
+      final updated = await repository.update(
+        'INC-102',
+        expectedRevision: 1,
+        patch: const IncidentPatch(
+          status: IncidentStatus.enProgreso,
+          title: '  Botón con color incorrecto  ',
+        ),
+      );
+      expect(updated.revision, 2);
+      expect(updated.status, IncidentStatus.enProgreso);
+      expect(updated.title, 'Botón con color incorrecto');
+      expect(updated.detail, 'Defecto visual. No impide completar tareas.');
+
+      final reopened = await openRepo(writeEnabled: false);
+      expect(reopened.getById('INC-102').revision, 2);
+      expect(reopened.all.map((i) => i.id).toList()[1], 'INC-102');
+    });
+
+    test(
+      'con revisión antigua responde REVISION_CONFLICT sin cambios',
+      () async {
+        final repository = await openRepo();
+        await repository.update(
+          'INC-101',
+          expectedRevision: 1,
+          patch: const IncidentPatch(impact: Impact.alto),
+        );
+        await expectLater(
+          repository.update(
+            'INC-101',
+            expectedRevision: 1,
+            patch: const IncidentPatch(impact: Impact.bajo),
+          ),
+          throwsDomain('REVISION_CONFLICT'),
+        );
+        expect(repository.getById('INC-101').impact, Impact.alto);
+      },
+    );
+
+    test(
+      'dos ediciones concurrentes con la misma revisión: gana una',
+      () async {
+        final repository = await openRepo();
+        final results = await Future.wait([
+          repository
+              .update(
+                'INC-101',
+                expectedRevision: 1,
+                patch: const IncidentPatch(title: 'A'),
+              )
+              .then<Object>((i) => i, onError: (Object e) => e),
+          repository
+              .update(
+                'INC-101',
+                expectedRevision: 1,
+                patch: const IncidentPatch(title: 'B'),
+              )
+              .then<Object>((i) => i, onError: (Object e) => e),
+        ]);
+        expect(results.whereType<Incident>(), hasLength(1));
+        expect(
+          results.whereType<DomainException>().single.code,
+          'REVISION_CONFLICT',
+        );
+        expect(repository.getById('INC-101').revision, 2);
+      },
+    );
+
+    test('rechaza patch vacío, ID inexistente y solo lectura', () async {
+      final repository = await openRepo();
+      await expectLater(
+        repository.update(
+          'INC-101',
+          expectedRevision: 1,
+          patch: const IncidentPatch(),
+        ),
+        throwsDomain('VALIDATION_ERROR'),
+      );
+      await expectLater(
+        repository.update(
+          'INC-999',
+          expectedRevision: 1,
+          patch: const IncidentPatch(workaround: true),
+        ),
+        throwsDomain('NOT_FOUND'),
+      );
+      await expectLater(
+        (await openRepo(writeEnabled: false)).update(
+          'INC-101',
+          expectedRevision: 1,
+          patch: const IncidentPatch(workaround: true),
+        ),
+        throwsDomain('WRITE_DISABLED'),
+      );
+    });
+  });
+
+  group('delete', () {
+    test('borra, persiste y no reutiliza el ID', () async {
+      final repository = await openRepo(deleteEnabled: true);
+      expect(repository.deleteEnabled, isTrue);
+      await repository.create(draft); // INC-105
+      final deleted = await repository.delete('INC-105', reason: 'Prueba');
+      expect(deleted.id, 'INC-105');
+      expect(() => repository.getById('INC-105'), throwsDomain('NOT_FOUND'));
+
+      final reopened = await openRepo(deleteEnabled: true);
+      expect(reopened.all, hasLength(4));
+      expect((await reopened.create(draft)).id, 'INC-106');
+    });
+
+    test('exige escritura y borrado habilitados', () async {
+      final readOnly = await openRepo(writeEnabled: false, deleteEnabled: true);
+      expect(readOnly.deleteEnabled, isFalse);
+      await expectLater(
+        readOnly.delete('INC-101', reason: 'x'),
+        throwsDomain('WRITE_DISABLED'),
+      );
+      final noDelete = await openRepo();
+      expect(noDelete.deleteEnabled, isFalse);
+      await expectLater(
+        noDelete.delete('INC-101', reason: 'x'),
+        throwsDomain('DELETE_DISABLED'),
+      );
+      expect(noDelete.all, hasLength(4));
+    });
+
+    test('exige motivo y que la incidencia exista', () async {
+      final repository = await openRepo(deleteEnabled: true);
+      await expectLater(
+        repository.delete('INC-101', reason: '  '),
+        throwsDomain('VALIDATION_ERROR'),
+      );
+      await expectLater(
+        repository.delete('INC-999', reason: 'x'),
+        throwsDomain('NOT_FOUND'),
+      );
+      expect(repository.all, hasLength(4));
     });
   });
 }
