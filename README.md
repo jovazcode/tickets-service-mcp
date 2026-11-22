@@ -69,7 +69,12 @@ dart compile exe bin/tickets_service_mcp.dart -o build/tickets_service_mcp
 
 ### Claude Code
 
-Este repositorio ya declara el servidor `mesa-incidencias` en [`.mcp.json`](.mcp.json) (con `dart run`), así que al abrir el proyecto en Claude Code basta con aprobarlo y comprobarlo con `/mcp`. Para usarlo desde otros proyectos, registra el ejecutable compilado:
+Este repositorio ya declara el servidor `mesa-incidencias` en [`.mcp.json`](.mcp.json), apuntando a `build/tickets_service_mcp`. Compila el ejecutable (y vuelve a compilarlo tras cada cambio en el código), abre el proyecto en Claude Code, aprueba el servidor y compruébalo con `/mcp`.
+
+> [!WARNING]
+> No uses `dart run` como comando del cliente: compilar en cada arranque tarda unos 3 s, la sonda de versión del cliente caduca y la conexión puede quedarse en "Connecting...". El ejecutable nativo arranca casi al instante.
+
+Para usarlo desde otros proyectos, registra el ejecutable compilado:
 
 ```sh
 claude mcp add mesa-incidencias -- /ruta/absoluta/a/build/tickets_service_mcp

@@ -15,6 +15,7 @@ Current state (phase 1, read-only): tools `buscar_incidencias` and `obtener_inci
 - `lib/src/domain/`, `lib/src/store/`, `lib/src/services/`: pure domain, no `mcp_dart` imports. Business failures throw `DomainException(code, message)`.
 - `lib/src/mcp/`: thin adapters. `createMcpServer` registers everything; one `BaseTool` subclass per tool (`run` returns the structured result, `execute` maps `DomainException` to `CallToolResult(isError: true)`).
 - `bin/` only reads config (`ServerConfig.fromEnvironment`, paths relative to the project root, overridable with `MESA_INCIDENCIAS_DATA` / `MESA_INCIDENCIAS_DOCS`) and connects `StdioServerTransport`; it is not covered by tests, so keep logic out of it.
+- Clients must launch the AOT binary `build/tickets_service_mcp` (`dart compile exe bin/tickets_service_mcp.dart -o build/tickets_service_mcp`; recompile after changes). `dart run` takes ~3 s to start, Claude Code's protocol probe times out and `/mcp` stays at "Connecting...".
 - Tests drive the server end to end with an in-process `McpClient` over `IOStreamTransport` (`test/src/mcp/server_test.dart`).
 - Dart 3.14 lints require the new constructor syntax (`const new(...)`, `factory fromJson(...)`, enum `new(...)`); `dart fix --apply` converts it.
 

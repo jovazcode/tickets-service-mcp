@@ -6,8 +6,8 @@
     },
     "mesa-incidencias": {
       "type": "stdio",
-      "command": "dart",
-      "args": ["run", "bin/tickets_service_mcp.dart"]
+      "command": "./build/tickets_service_mcp",
+      "args": []
     }
   }
 }
