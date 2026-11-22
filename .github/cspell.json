@@ -1,7 +1,11 @@
 {
   "version": "0.2",
   "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
-  "dictionaries": ["vgv_allowed", "vgv_forbidden"],
+  "dictionaries": [
+    "vgv_allowed",
+    "vgv_forbidden",
+    "es_es"
+  ],
   "dictionaryDefinitions": [
     {
       "name": "vgv_allowed",
@@ -12,10 +16,19 @@
       "name": "vgv_forbidden",
       "path": "https://raw.githubusercontent.com/verygoodopensource/very_good_dictionaries/main/forbidden.txt",
       "description": "Forbidden VGV Spellings"
+    },
+    {
+      "name": "es_es",
+      "path": "https://cdn.jsdelivr.net/npm/@cspell/dict-es-es@3.0.9/Spanish.trie.gz",
+      "description": "Spanish dictionary"
     }
   ],
   "useGitignore": true,
   "words": [
+    "leehack",
+    "modelcontextprotocol",
+    "streamable",
     "tickets_service_mcp"
-  ]
+  ],
+  "language": "en,es"
 }
