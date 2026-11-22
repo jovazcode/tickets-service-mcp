@@ -7,3 +7,7 @@ build/
 
 # Test related
 coverage/
+
+# Almacén de trabajo local del servidor MCP
+data/tickets.local.json
+data/tickets.local.json.tmp

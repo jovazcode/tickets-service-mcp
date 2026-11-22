@@ -8,7 +8,7 @@
 Servidor [Model Context Protocol (MCP)][mcp_link] local, escrito en Dart, que expone una mesa de incidencias ficticia a clientes MCP (Claude Code, Claude Desktop, MCP Inspector…) a través de **stdio**.
 
 > [!NOTE]
-> Fase 1 (solo lectura): búsqueda y consulta de incidencias y documentos de proceso. La creación, edición y borrado llegarán en las siguientes fases.
+> Fase 2: búsqueda, consulta y creación de incidencias, documentos de proceso y prompt de apertura. La edición y el borrado llegarán en la siguiente fase.
 
 ## Índice
 
@@ -52,8 +52,12 @@ dart pub get
 | --- | --- | --- |
 | Tool | `buscar_incidencias` | Busca por texto libre (ID, título y detalle, sin distinguir mayúsculas ni tildes) y filtra por `status`, `impact` y `workaround`. Paginación con `limit` (1-100, por defecto 20) y `offset`. Devuelve `{items, total}`. |
 | Tool | `obtener_incidencia` | Devuelve la ficha completa de una incidencia por `id` (`INC-104`). Si no existe, error `NOT_FOUND`. |
+| Tool | `crear_incidencia` | Abre una incidencia (`title`, `detail`, `impact`, `workaround` opcional) en estado `abierta` con la fecha de hoy y el siguiente ID. Requiere escritura habilitada; si no, `WRITE_DISABLED`. Valida el texto (`VALIDATION_ERROR`). |
 | Resource | `docs://proceso_apertura` | Cómo abrir una incidencia ([`docs/proceso_apertura.md`](docs/proceso_apertura.md)). |
 | Resource | `docs://proceso_triaje` | Cómo clasificar y priorizar ([`docs/proceso_triaje.md`](docs/proceso_triaje.md)). |
+| Prompt | `abrir_incidencia` | Guía al modelo por el proceso de apertura (incrusta `docs://proceso_apertura`): buscar duplicados, completar datos, confirmar contigo y crear. Argumento opcional `problema`. |
+
+Las herramientas de escritura aparecen siempre en el catálogo, pero el servidor las rechaza salvo que se arranque con `MESA_INCIDENCIAS_WRITE_ENABLED=1`: el control está en el servidor, no en que el modelo se porte bien. Las instrucciones que el servidor envía al cliente indican el modo activo.
 
 Las herramientas devuelven resultados estructurados (`structuredContent`) y los errores de negocio como resultado con `isError: true` y el texto `CODIGO: mensaje`, para que el modelo pueda corregirse.
 
@@ -98,8 +102,20 @@ El servidor busca los datos y documentos relativos a la raíz del proyecto (carp
 
 | Variable | Por defecto |
 | --- | --- |
-| `MESA_INCIDENCIAS_DATA` | `data/tickets.json` |
+| `MESA_INCIDENCIAS_DATA` | `data/tickets.json` (fixture, nunca se modifica) |
+| `MESA_INCIDENCIAS_STORE` | `data/tickets.local.json` (almacén de trabajo) |
 | `MESA_INCIDENCIAS_DOCS` | `docs` |
+| `MESA_INCIDENCIAS_WRITE_ENABLED` | vacío: solo lectura. `1`, `true`, `yes` u `on` habilitan la escritura |
+
+### Escritura y almacén de trabajo
+
+Con la escritura habilitada, el primer cambio copia la fixture al almacén de trabajo (`{nextId, incidents}`), que se guarda de forma atómica (fichero temporal + renombrado). Al arrancar, si el almacén existe se usa en lugar de la fixture, también en solo lectura, para no perder lo creado. Para volver al estado inicial, borra `data/tickets.local.json`.
+
+En Claude Code, `.mcp.json` pasa al servidor el valor de `MESA_INCIDENCIAS_WRITE_ENABLED` del entorno en el que arrancas Claude Code (por defecto `0`):
+
+```sh
+MESA_INCIDENCIAS_WRITE_ENABLED=1 claude    # o arranca VS Code con esa variable
+```
 
 ### MCP Inspector
 
@@ -138,7 +154,7 @@ bin/                 Punto de entrada: lee la configuración y conecta stdio
 lib/src/domain/      Modelo de incidencia, enums y errores de negocio
 lib/src/store/       Carga y acceso a las incidencias
 lib/src/services/    Búsqueda (funciones puras)
-lib/src/mcp/         Adaptadores MCP: servidor, tools y resources
+lib/src/mcp/         Adaptadores MCP: servidor, tools, resources y prompts
 test/                Tests, con la misma estructura que lib/
 data/                Fixture de incidencias
 docs/                Documentos de proceso publicados como recursos
