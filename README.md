@@ -8,7 +8,7 @@
 Servidor [Model Context Protocol (MCP)][mcp_link] local, escrito en Dart, que expone una mesa de incidencias ficticia a clientes MCP (Claude Code, Claude Desktop, MCP Inspector…) a través de **stdio**.
 
 > [!NOTE]
-> Fase 3: CRUD completo (búsqueda, consulta, creación, edición con control de revisión y borrado confirmado), documentos de proceso y prompt de apertura.
+> Fase 4 (en curso): CRUD completo, triaje (siguiente incidencia prioritaria, resumen de la mesa y cambios de estado con transiciones permitidas), documentos de proceso y prompt de apertura.
 
 ## Índice
 
@@ -52,8 +52,11 @@ dart pub get
 | --- | --- | --- |
 | Tool | `buscar_incidencias` | Busca por texto libre (ID, título y detalle, sin distinguir mayúsculas ni tildes) y filtra por `status`, `impact` y `workaround`. Paginación con `limit` (1-100, por defecto 20) y `offset`. Devuelve `{items, total}`. |
 | Tool | `obtener_incidencia` | Devuelve la ficha completa de una incidencia por `id` (`INC-104`). Si no existe, error `NOT_FOUND`. |
+| Tool | `siguiente_incidencia_prioritaria` | La incidencia activa que hay que atender primero según `docs://proceso_triaje` (impacto alto, sin alternativa temporal, más antigua, ID menor), con los criterios aplicados y la cola de IDs activos en orden. |
+| Tool | `resumen_mesa` | Totales: incidencias y activas, críticas (activas de impacto alto sin alternativa temporal), recuentos por estado, impacto y alternativa temporal, y la activa más antigua. |
 | Tool | `crear_incidencia` | Abre una incidencia (`title`, `detail`, `impact`, `workaround` opcional) en estado `abierta` con la fecha de hoy y el siguiente ID. Requiere escritura habilitada; si no, `WRITE_DISABLED`. Valida el texto (`VALIDATION_ERROR`). |
-| Tool | `actualizar_incidencia` | Cambia uno o varios campos (`title`, `detail`, `status`, `impact`, `workaround`). Exige `expectedRevision`, la revisión leída antes de editar: si la incidencia ha cambiado entretanto responde `REVISION_CONFLICT` y no aplica nada. Requiere escritura. |
+| Tool | `actualizar_incidencia` | Cambia uno o varios campos (`title`, `detail`, `impact`, `workaround`; el estado, con `cambiar_estado`). Exige `expectedRevision`, la revisión leída antes de editar: si la incidencia ha cambiado entretanto responde `REVISION_CONFLICT` y no aplica nada. Requiere escritura. |
+| Tool | `cambiar_estado` | Mueve una incidencia por su ciclo de vida: `abierta` → `en_progreso`/`resuelta`; `en_progreso` → `resuelta`/`abierta`; `resuelta` → `abierta` (reabrir exige `reason`, si no `REASON_REQUIRED`). Otras transiciones → `INVALID_TRANSITION`. Exige `expectedRevision`. Requiere escritura. |
 | Tool | `eliminar_incidencia` | Borra físicamente una incidencia (no se puede deshacer; su ID no se reutiliza). Exige `confirm: true` (`CONFIRMATION_REQUIRED`) y `reason`. Requiere escritura y además borrado (`DELETE_DISABLED`). |
 | Resource | `docs://proceso_apertura` | Cómo abrir una incidencia ([`docs/proceso_apertura.md`](docs/proceso_apertura.md)). |
 | Resource | `docs://proceso_triaje` | Cómo clasificar y priorizar ([`docs/proceso_triaje.md`](docs/proceso_triaje.md)). |
@@ -78,6 +81,13 @@ dart compile exe bin/tickets_service_mcp.dart -o build/tickets_service_mcp
 ### Claude Code
 
 Este repositorio ya declara el servidor `mesa-incidencias` en [`.mcp.json`](.mcp.json), apuntando a `build/tickets_service_mcp`. Compila el ejecutable (y vuelve a compilarlo tras cada cambio en el código), abre el proyecto en Claude Code, aprueba el servidor y compruébalo con `/mcp`.
+
+Si Claude Code tiene el servidor en marcha, el ejecutable está en uso (`Text file busy`). Compila a un fichero aparte, sustitúyelo y vuelve a conectar el servidor en `/mcp`:
+
+```sh
+dart compile exe bin/tickets_service_mcp.dart -o build/tickets_service_mcp.new \
+  && mv build/tickets_service_mcp.new build/tickets_service_mcp
+```
 
 > [!WARNING]
 > No uses `dart run` como comando del cliente: compilar en cada arranque tarda unos 3 s, la sonda de versión del cliente caduca y la conexión puede quedarse en "Connecting...". El ejecutable nativo arranca casi al instante.
@@ -166,7 +176,7 @@ open coverage/html/index.html
 bin/                 Punto de entrada: lee la configuración y conecta stdio
 lib/src/domain/      Modelo de incidencia, enums y errores de negocio
 lib/src/store/       Carga y acceso a las incidencias
-lib/src/services/    Búsqueda (funciones puras)
+lib/src/services/    Búsqueda y triaje (funciones puras)
 lib/src/mcp/         Adaptadores MCP: servidor, tools, resources y prompts
 test/                Tests, con la misma estructura que lib/
 data/                Fixture de incidencias

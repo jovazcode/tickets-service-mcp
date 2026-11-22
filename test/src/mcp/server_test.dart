@@ -22,14 +22,23 @@ void main() {
       unorderedEquals([
         'buscar_incidencias',
         'obtener_incidencia',
+        'siguiente_incidencia_prioritaria',
+        'resumen_mesa',
         'crear_incidencia',
         'actualizar_incidencia',
+        'cambiar_estado',
         'eliminar_incidencia',
       ]),
     );
     expect(tools.values.every((t) => t.title!.isNotEmpty), isTrue);
     expect(tools['buscar_incidencias']!.annotations?.readOnlyHint, isTrue);
     expect(tools['obtener_incidencia']!.annotations?.readOnlyHint, isTrue);
+    expect(
+      tools['siguiente_incidencia_prioritaria']!.annotations?.readOnlyHint,
+      isTrue,
+    );
+    expect(tools['resumen_mesa']!.annotations?.readOnlyHint, isTrue);
+    expect(tools['cambiar_estado']!.annotations?.readOnlyHint, isFalse);
     expect(tools['crear_incidencia']!.annotations?.readOnlyHint, isFalse);
     expect(tools['crear_incidencia']!.annotations?.destructiveHint, isFalse);
     expect(

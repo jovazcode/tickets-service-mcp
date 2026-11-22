@@ -25,8 +25,7 @@ void main() {
       final result = await harness.call('actualizar_incidencia', {
         'id': 'INC-104',
         'expectedRevision': before['revision'],
-        'status': 'en_progreso',
-        'impact': 'alto',
+        'impact': 'bajo',
         'workaround': true,
         'title': 'La exportación se interrumpe a veces',
         'detail': 'Se puede reintentar.',
@@ -34,7 +33,8 @@ void main() {
       expect(result.isError, isNot(true));
       final after = incidentOf(result);
       expect(after['revision'], 2);
-      expect(after['status'], 'en_progreso');
+      expect(after['impact'], 'bajo');
+      expect(after['status'], 'abierta');
       expect(after['workaround'], isTrue);
       expect(after['detail'], 'Se puede reintentar.');
     });
@@ -60,11 +60,11 @@ void main() {
       expect(errorText(result), startsWith('VALIDATION_ERROR'));
     });
 
-    test('rechaza estados fuera del esquema', () async {
+    test('rechaza valores fuera del esquema', () async {
       final result = await harness.call('actualizar_incidencia', {
         'id': 'INC-101',
         'expectedRevision': 1,
-        'status': 'cerrada',
+        'impact': 'medio',
       });
       expect(result.isError, isTrue);
       expect(harness.repository.getById('INC-101').revision, 1);

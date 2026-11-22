@@ -1,30 +1,23 @@
 import 'package:tickets_service_mcp/src/domain/domain_exception.dart';
 import 'package:tickets_service_mcp/src/domain/impact.dart';
 import 'package:tickets_service_mcp/src/domain/incident.dart';
-import 'package:tickets_service_mcp/src/domain/incident_status.dart';
 import 'package:tickets_service_mcp/src/domain/text_rules.dart';
 
 /// {@template incident_patch}
 /// Cambios a aplicar sobre una incidencia. Los campos `null` no cambian.
+///
+/// El estado no forma parte del patch: se cambia con una transición
+/// explícita para respetar las reglas del ciclo de vida.
 /// {@endtemplate}
 class IncidentPatch {
   /// {@macro incident_patch}
-  const new({
-    this.title,
-    this.detail,
-    this.status,
-    this.impact,
-    this.workaround,
-  });
+  const new({this.title, this.detail, this.impact, this.workaround});
 
   /// Nuevo título.
   final String? title;
 
   /// Nuevo detalle.
   final String? detail;
-
-  /// Nuevo estado.
-  final IncidentStatus? status;
 
   /// Nuevo impacto.
   final Impact? impact;
@@ -34,11 +27,7 @@ class IncidentPatch {
 
   /// Si no cambia ningún campo.
   bool get isEmpty =>
-      title == null &&
-      detail == null &&
-      status == null &&
-      impact == null &&
-      workaround == null;
+      title == null && detail == null && impact == null && workaround == null;
 
   /// Aplica los cambios a [incident] y sube su revisión.
   ///
@@ -58,7 +47,6 @@ class IncidentPatch {
       detail: detail == null
           ? null
           : checkText('detail', detail, maxDetailLength),
-      status: status,
       impact: impact,
       workaround: workaround,
       revision: incident.revision + 1,
