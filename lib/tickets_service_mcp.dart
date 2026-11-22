@@ -1,4 +1,11 @@
 /// Servidor MCP local (stdio) para la mesa de incidencias
 library;
 
-export 'src/tickets_service_mcp.dart';
+export 'src/domain/domain_exception.dart';
+export 'src/domain/impact.dart';
+export 'src/domain/incident.dart';
+export 'src/domain/incident_status.dart';
+export 'src/mcp/server.dart';
+export 'src/server_config.dart';
+export 'src/services/incident_search.dart';
+export 'src/store/incident_repository.dart';

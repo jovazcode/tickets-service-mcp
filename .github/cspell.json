@@ -25,10 +25,13 @@
   ],
   "useGitignore": true,
   "words": [
+    "descríbela",
     "leehack",
     "modelcontextprotocol",
+    "paginación",
     "streamable",
-    "tickets_service_mcp"
+    "tickets_service_mcp",
+    "triaje"
   ],
   "language": "en,es"
 }

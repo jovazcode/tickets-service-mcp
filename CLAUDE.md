@@ -6,9 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Local MCP server (stdio transport) in Dart for a fictitious incident desk ("mesa de incidencias"), built with the community SDK **`mcp_dart`** (leehack) — not Google's `dart_mcp`, which was dropped because it ships no agent skills. Scaffolded with Very Good CLI (`dart_package` template) and following Very Good Ventures conventions.
 
-Current state: skeleton only. `bin/tickets_service_mcp.dart` has an empty `main`; no MCP server code yet.
+This is an independent project designed from scratch; do not use sibling folders (`../resultado/`, `../inicio/`) as a reference.
 
-The sibling folder `../resultado/` holds a TypeScript reference implementation of the same incident desk (CRUD tools, resources, prompt, write/hard-delete permissions disabled by default via env vars, separate working store and audit log, immutable fixture). See `../README.md` for its contract.
+Current state (phase 1, read-only): tools `buscar_incidencias` and `obtener_incidencia`; resources `docs://proceso_apertura` and `docs://proceso_triaje` (Markdown in `docs/`). Next phases: create (write permission via env var), update/delete, then extra tools.
+
+## Architecture
+
+- `lib/src/domain/`, `lib/src/store/`, `lib/src/services/`: pure domain, no `mcp_dart` imports. Business failures throw `DomainException(code, message)`.
+- `lib/src/mcp/`: thin adapters. `createMcpServer` registers everything; one `BaseTool` subclass per tool (`run` returns the structured result, `execute` maps `DomainException` to `CallToolResult(isError: true)`).
+- `bin/` only reads config (`ServerConfig.fromEnvironment`, paths relative to the project root, overridable with `MESA_INCIDENCIAS_DATA` / `MESA_INCIDENCIAS_DOCS`) and connects `StdioServerTransport`; it is not covered by tests, so keep logic out of it.
+- Clients must launch the AOT binary `build/tickets_service_mcp` (`dart compile exe bin/tickets_service_mcp.dart -o build/tickets_service_mcp`; recompile after changes). `dart run` takes ~3 s to start, Claude Code's protocol probe times out and `/mcp` stays at "Connecting...".
+- Tests drive the server end to end with an in-process `McpClient` over `IOStreamTransport` (`test/src/mcp/server_test.dart`).
+- Dart 3.14 lints require the new constructor syntax (`const new(...)`, `factory fromJson(...)`, enum `new(...)`); `dart fix --apply` converts it.
 
 ## Commands
 

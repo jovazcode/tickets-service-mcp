@@ -3,6 +3,11 @@
     "mcp-docs": {
       "type": "http",
       "url": "https://modelcontextprotocol.io/mcp"
+    },
+    "mesa-incidencias": {
+      "type": "stdio",
+      "command": "./build/tickets_service_mcp",
+      "args": []
     }
   }
 }

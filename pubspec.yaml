@@ -11,6 +11,7 @@ executables:
 
 dependencies:
   mcp_dart: ^2.4.4
+  path: ^1.9.1
 
 dev_dependencies:
   test: ^1.32.0
