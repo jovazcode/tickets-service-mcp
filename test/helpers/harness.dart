@@ -18,12 +18,14 @@ class Harness {
   static Future<Harness> start({
     String docsDirectory = 'docs',
     bool writeEnabled = false,
+    bool deleteEnabled = false,
   }) async {
     final storeDir = await Directory.systemTemp.createTemp('harness');
     final repository = await IncidentRepository.open(
       fixturePath: 'data/tickets.json',
       storePath: p.join(storeDir.path, 'tickets.local.json'),
       writeEnabled: writeEnabled,
+      deleteEnabled: deleteEnabled,
     );
     final server = createMcpServer(
       repository: repository,

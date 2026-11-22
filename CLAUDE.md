@@ -8,7 +8,7 @@ Local MCP server (stdio transport) in Dart for a fictitious incident desk ("mesa
 
 This is an independent project designed from scratch; do not use sibling folders (`../resultado/`, `../inicio/`) as a reference.
 
-Current state (phase 2): tools `buscar_incidencias`, `obtener_incidencia`, `crear_incidencia`; resources `docs://proceso_apertura` and `docs://proceso_triaje` (Markdown in `docs/`); prompt `abrir_incidencia`. Writes are rejected with `WRITE_DISABLED` unless `MESA_INCIDENCIAS_WRITE_ENABLED=1`; changes go to the working store `data/tickets.local.json` (`{nextId, incidents}`, atomic write, serialized queue), never to the fixture. Next phases: update/delete, then extra tools.
+Current state (phase 3, full CRUD): tools `buscar_incidencias`, `obtener_incidencia`, `crear_incidencia`, `actualizar_incidencia` (optimistic concurrency via `expectedRevision` → `REVISION_CONFLICT`), `eliminar_incidencia` (`confirm: true` + `reason`); resources `docs://proceso_apertura` and `docs://proceso_triaje` (Markdown in `docs/`); prompt `abrir_incidencia`. Writes are rejected with `WRITE_DISABLED` unless `MESA_INCIDENCIAS_WRITE_ENABLED=1`; deletes additionally need `MESA_INCIDENCIAS_DELETE_ENABLED=1` (`DELETE_DISABLED`). Changes go to the working store `data/tickets.local.json` (`{nextId, incidents}`, atomic write, serialized queue; deleted IDs are never reused), never to the fixture. Each incident has `revision` (missing → 1). Next: phase 4 extra tools (see the plan ideas: priority queue, summary, state machine, duplicates, audit history…).
 
 ## Architecture
 
@@ -54,7 +54,7 @@ Use `very_good dart test`, not `very_good test`: the latter targets Flutter and 
 
 ## Data
 
-`data/tickets.json` is the fixture: array of incidents with `id` (`INC-1xx`), `title`, `status` (`abierta`/`resuelta`…), `impact` (`bajo`/`alto`), `workaround` (bool), `created` (ISO date), `detail`. Treat it as read-only input; the server never writes it.
+`data/tickets.json` is the fixture: array of incidents with `id` (`INC-1xx`), `title`, `status` (`abierta`/`resuelta`…), `impact` (`bajo`/`alto`), `workaround` (bool), `created` (ISO date), `detail` (no `revision`: it defaults to 1). Treat it as read-only input; the server never writes it.
 
 ## Agent skills
 

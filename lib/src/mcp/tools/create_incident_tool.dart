@@ -1,6 +1,7 @@
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:tickets_service_mcp/src/domain/impact.dart';
 import 'package:tickets_service_mcp/src/domain/new_incident.dart';
+import 'package:tickets_service_mcp/src/domain/text_rules.dart';
 import 'package:tickets_service_mcp/src/mcp/schemas.dart';
 import 'package:tickets_service_mcp/src/mcp/tools/base_tool.dart';
 import 'package:tickets_service_mcp/src/store/incident_repository.dart';
@@ -33,12 +34,12 @@ class CreateIncidentTool extends BaseTool {
     properties: {
       'title': JsonSchema.string(
         minLength: 1,
-        maxLength: NewIncident.maxTitleLength,
+        maxLength: maxTitleLength,
         description: 'Síntoma en una frase corta',
       ),
       'detail': JsonSchema.string(
         minLength: 1,
-        maxLength: NewIncident.maxDetailLength,
+        maxLength: maxDetailLength,
         description:
             'A quién afecta, desde cuándo, cómo reproducirlo y qué se ha '
             'intentado',

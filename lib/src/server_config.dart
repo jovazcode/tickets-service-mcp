@@ -10,6 +10,7 @@ class ServerConfig {
     required this.storePath,
     required this.docsDirectory,
     this.writeEnabled = false,
+    this.deleteEnabled = false,
   });
 
   /// Construye la configuración a partir de [environment].
@@ -23,6 +24,8 @@ class ServerConfig {
   ///   (por defecto `docs`).
   /// - `MESA_INCIDENCIAS_WRITE_ENABLED`: `1`, `true`, `yes` u `on` para
   ///   permitir cambios (por defecto, solo lectura).
+  /// - `MESA_INCIDENCIAS_DELETE_ENABLED`: igual, para permitir además el
+  ///   borrado (por defecto desactivado).
   factory fromEnvironment(
     Map<String, String> environment, {
     required String baseDirectory,
@@ -31,6 +34,13 @@ class ServerConfig {
       final value = environment[variable]?.trim();
       return value == null || value.isEmpty ? null : value;
     }
+
+    bool flag(String variable) => const {
+      '1',
+      'true',
+      'yes',
+      'on',
+    }.contains(read(variable)?.toLowerCase());
 
     String resolve(String variable, String fallback) =>
         p.normalize(p.join(baseDirectory, read(variable) ?? fallback));
@@ -45,12 +55,8 @@ class ServerConfig {
         p.join('data', 'tickets.local.json'),
       ),
       docsDirectory: resolve('MESA_INCIDENCIAS_DOCS', 'docs'),
-      writeEnabled: const {
-        '1',
-        'true',
-        'yes',
-        'on',
-      }.contains(read('MESA_INCIDENCIAS_WRITE_ENABLED')?.toLowerCase()),
+      writeEnabled: flag('MESA_INCIDENCIAS_WRITE_ENABLED'),
+      deleteEnabled: flag('MESA_INCIDENCIAS_DELETE_ENABLED'),
     );
   }
 
@@ -65,4 +71,7 @@ class ServerConfig {
 
   /// Si se permiten operaciones de escritura.
   final bool writeEnabled;
+
+  /// Si se permite borrar incidencias (requiere también [writeEnabled]).
+  final bool deleteEnabled;
 }

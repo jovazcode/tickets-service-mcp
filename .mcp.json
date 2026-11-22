@@ -9,7 +9,8 @@
       "command": "./build/tickets_service_mcp",
       "args": [],
       "env": {
-        "MESA_INCIDENCIAS_WRITE_ENABLED": "${MESA_INCIDENCIAS_WRITE_ENABLED:-0}"
+        "MESA_INCIDENCIAS_WRITE_ENABLED": "${MESA_INCIDENCIAS_WRITE_ENABLED:-0}",
+        "MESA_INCIDENCIAS_DELETE_ENABLED": "${MESA_INCIDENCIAS_DELETE_ENABLED:-0}"
       }
     }
   }

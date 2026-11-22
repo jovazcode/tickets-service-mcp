@@ -12,6 +12,14 @@ void main() {
       expect(config.storePath, '/proyecto/data/tickets.local.json');
       expect(config.docsDirectory, '/proyecto/docs');
       expect(config.writeEnabled, isFalse);
+      expect(config.deleteEnabled, isFalse);
+    });
+
+    test('lee el permiso de borrado', () {
+      final config = ServerConfig.fromEnvironment(const {
+        'MESA_INCIDENCIAS_DELETE_ENABLED': '1',
+      }, baseDirectory: '/proyecto');
+      expect(config.deleteEnabled, isTrue);
     });
 
     test('lee la ruta del almacén del entorno', () {
