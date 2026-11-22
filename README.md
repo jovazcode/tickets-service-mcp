@@ -40,7 +40,7 @@ Servidor [Model Context Protocol (MCP)][mcp_link] local, escrito en Dart, que ex
 ## Instalación 💻
 
 ```sh
-git clone <url-del-repositorio>
+git clone https://github.com/jovazcode/tickets-service-mcp.git
 cd tickets-service-mcp
 dart pub get
 ```
@@ -131,8 +131,8 @@ El workflow de [GitHub Actions][github_actions_link], basado en [Very Good Workf
 
 Distribuido bajo la licencia MIT. Consulta [LICENSE](LICENSE).
 
-[ci_badge]: https://github.com/<owner>/tickets-service-mcp/actions/workflows/main.yaml/badge.svg
-[ci_link]: https://github.com/<owner>/tickets-service-mcp/actions/workflows/main.yaml
+[ci_badge]: https://github.com/jovazcode/tickets-service-mcp/actions/workflows/main.yaml/badge.svg
+[ci_link]: https://github.com/jovazcode/tickets-service-mcp/actions/workflows/main.yaml
 [conventional_commits_link]: https://www.conventionalcommits.org/es/v1.0.0/
 [dart_install_link]: https://dart.dev/get-dart
 [github_actions_link]: https://docs.github.com/en/actions/learn-github-actions
