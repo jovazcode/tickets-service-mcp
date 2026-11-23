@@ -124,7 +124,10 @@ void main() {
 
   group('documentos de proceso', () {
     test('se listan como recursos Markdown', () async {
-      final resources = (await harness.client.listResources()).resources;
+      final resources = [
+        for (final r in (await harness.client.listResources()).resources)
+          if (r.uri.startsWith('docs://')) r,
+      ];
       expect(
         resources.map((r) => r.uri),
         unorderedEquals(['docs://proceso_apertura', 'docs://proceso_triaje']),

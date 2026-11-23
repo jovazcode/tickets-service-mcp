@@ -9,6 +9,7 @@ export 'src/domain/incident_patch.dart';
 export 'src/domain/incident_status.dart';
 export 'src/domain/new_incident.dart';
 export 'src/domain/text_rules.dart';
+export 'src/mcp/resources/incident_resource.dart';
 export 'src/mcp/server.dart';
 export 'src/server_config.dart';
 export 'src/services/duplicates.dart';

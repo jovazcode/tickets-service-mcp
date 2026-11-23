@@ -538,6 +538,24 @@ void main() {
       expect(File(auditPath).existsSync(), isFalse);
     });
 
+    test('changes emite solo los cambios confirmados', () async {
+      final repository = await openRepo(deleteEnabled: true);
+      final events = <AuditEvent>[];
+      final subscription = repository.changes.listen(events.add);
+      final created = await repository.create(draft);
+      await expectLater(
+        repository.delete('INC-999', reason: 'No existe'),
+        throwsDomain('NOT_FOUND'),
+      );
+      await repository.delete(created.id, reason: 'Prueba');
+      await Future<void>.delayed(Duration.zero);
+      await subscription.cancel();
+      expect(events.map((e) => (e.operation, e.id)), [
+        (AuditOperation.crear, created.id),
+        (AuditOperation.eliminar, created.id),
+      ]);
+    });
+
     test(
       'incidencia sin cambios: historial vacío; inexistente: NOT_FOUND',
       () async {

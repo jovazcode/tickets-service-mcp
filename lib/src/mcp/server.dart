@@ -1,5 +1,6 @@
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:tickets_service_mcp/src/mcp/prompts/open_incident_prompt.dart';
+import 'package:tickets_service_mcp/src/mcp/resources/incident_resource.dart';
 import 'package:tickets_service_mcp/src/mcp/resources/process_documents.dart';
 import 'package:tickets_service_mcp/src/mcp/tools/base_tool.dart';
 import 'package:tickets_service_mcp/src/mcp/tools/change_status_tool.dart';
@@ -18,7 +19,7 @@ import 'package:tickets_service_mcp/src/store/incident_repository.dart';
 const serverName = 'mesa-incidencias';
 
 /// Versión del servidor.
-const serverVersion = '0.5.0';
+const serverVersion = '0.6.0';
 
 /// Herramientas que expone el servidor.
 ///
@@ -62,7 +63,8 @@ String serverInstructions({
   return 'Mesa de incidencias local con datos ficticios. Usa '
       'buscar_incidencias para localizar incidencias y obtener_incidencia '
       'para ver una ficha y su revisión, necesaria para actualizarla o '
-      'cambiar su estado, e historial_incidencia para ver sus cambios. '
+      'cambiar su estado, e historial_incidencia para ver sus cambios. Cada '
+      'ficha está también en el recurso incidencia://{id}. '
       'Antes de crear una incidencia usa buscar_duplicadas. Para decidir qué '
       'atender usa siguiente_incidencia_prioritaria y resumen_mesa. Los '
       'procesos de la mesa están en los recursos docs://proceso_apertura y '
@@ -82,10 +84,14 @@ McpServer createMcpServer({
         writeEnabled: repository.writeEnabled,
         deleteEnabled: repository.deleteEnabled,
       ),
+      capabilities: const ServerCapabilities(
+        resources: ServerCapabilitiesResources(listChanged: true),
+      ),
     ),
   );
   createAllTools(repository).forEach(server.registerBaseTool);
   registerProcessDocuments(server, docsDirectory);
+  registerIncidentResource(server, repository);
   registerOpenIncidentPrompt(server, docsDirectory);
   return server;
 }
