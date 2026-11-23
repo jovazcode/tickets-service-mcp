@@ -9,10 +9,16 @@ import 'package:tickets_service_mcp/src/domain/audit_event.dart';
 /// {@endtemplate}
 class AuditLog {
   /// {@macro audit_log}
-  const new(this.path);
+  ///
+  /// Los avisos sobre líneas ilegibles se escriben en [warnings] (por
+  /// defecto, [stderr]: stdout queda reservado para JSON-RPC).
+  const new(this.path, {this.warnings});
 
   /// Ruta del fichero `.jsonl`.
   final String path;
+
+  /// Destino de los avisos; si es `null`, se usa [stderr].
+  final StringSink? warnings;
 
   /// Añade [event] al final del fichero, creándolo si no existe.
   ///
@@ -29,21 +35,30 @@ class AuditLog {
 
   /// Eventos de la incidencia [id], del más antiguo al más reciente.
   ///
-  /// Las líneas que no se pueden leer se ignoran (por ejemplo, una última
-  /// línea a medias), para que un fallo puntual no oculte el resto.
+  /// Las líneas que no se pueden leer (por ejemplo, una última línea a
+  /// medias o un fichero formateado de nuevo con sangría) se ignoran, para
+  /// que un fallo puntual no oculte el resto, pero cada una genera un aviso
+  /// con su número de línea.
   Future<List<AuditEvent>> eventsFor(String id) async {
     final file = File(path);
     if (!file.existsSync()) return const [];
     final events = <AuditEvent>[];
-    for (final line in await file.readAsLines()) {
+    final lines = await file.readAsLines();
+    for (var index = 0; index < lines.length; index++) {
+      final line = lines[index];
       if (line.trim().isEmpty) continue;
       try {
         final decoded = jsonDecode(line);
-        if (decoded is! Map<String, dynamic>) continue;
+        if (decoded is! Map<String, dynamic>) {
+          throw const FormatException('no es un objeto JSON');
+        }
         final event = AuditEvent.fromJson(decoded);
         if (event.id == id) events.add(event);
-      } on FormatException {
-        continue;
+      } on FormatException catch (error) {
+        (warnings ?? stderr).writeln(
+          '[audit] Línea ${index + 1} ilegible en $path, ignorada: '
+          '${error.message}',
+        );
       }
     }
     return events;
