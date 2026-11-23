@@ -11,4 +11,5 @@ coverage/
 # Almacén de trabajo local del servidor MCP
 data/tickets.local.json
 data/tickets.local.json.tmp
+data/tickets.local.json.lock
 data/tickets.audit.jsonl

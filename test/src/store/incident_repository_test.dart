@@ -596,4 +596,117 @@ void main() {
       },
     );
   });
+  group('varios procesos sobre el mismo almacén', () {
+    test('las lecturas recogen los cambios del otro', () async {
+      final a = await openRepo(deleteEnabled: true);
+      final b = await openRepo();
+      expect(b.getById('INC-102').id, 'INC-102');
+
+      await a.delete('INC-102', reason: 'creada por error');
+
+      expect(b.all.map((i) => i.id), isNot(contains('INC-102')));
+      expect(() => b.getById('INC-102'), throwsDomain('NOT_FOUND'));
+    });
+
+    test('escribir con datos viejos no deshace los cambios del otro', () async {
+      final a = await openRepo(deleteEnabled: true);
+      final b = await openRepo();
+      // b lee antes de que a escriba.
+      expect(b.all, hasLength(4));
+
+      await a.delete('INC-102', reason: 'creada por error');
+      await b.update(
+        'INC-101',
+        expectedRevision: 1,
+        patch: const IncidentPatch(workaround: true),
+      );
+
+      final stored = (await openRepo(writeEnabled: false)).all;
+      expect(stored.map((i) => i.id), ['INC-101', 'INC-103', 'INC-104']);
+      expect(stored.first.workaround, isTrue);
+    });
+
+    test('no repiten IDs al crear', () async {
+      final a = await openRepo();
+      final b = await openRepo();
+      expect(b.all, hasLength(4));
+
+      expect((await a.create(draft)).id, 'INC-105');
+      expect((await b.create(draft)).id, 'INC-106');
+      expect((await a.create(draft)).id, 'INC-107');
+      expect((await openRepo()).all, hasLength(7));
+    });
+
+    test('ven las revisiones del otro', () async {
+      final a = await openRepo();
+      final b = await openRepo();
+      await a.update(
+        'INC-101',
+        expectedRevision: 1,
+        patch: const IncidentPatch(workaround: true),
+      );
+      await expectLater(
+        b.update(
+          'INC-101',
+          expectedRevision: 1,
+          patch: const IncidentPatch(workaround: false),
+        ),
+        throwsDomain('REVISION_CONFLICT'),
+      );
+    });
+
+    test('borrar lo que el otro ya borró responde NOT_FOUND', () async {
+      final a = await openRepo(deleteEnabled: true);
+      final b = await openRepo(deleteEnabled: true);
+      expect(b.all, hasLength(4));
+      await a.delete('INC-102', reason: 'creada por error');
+      await expectLater(
+        b.delete('INC-102', reason: 'creada por error'),
+        throwsDomain('NOT_FOUND'),
+      );
+    });
+
+    test('con el almacén ilegible lee lo último y no escribe encima', () async {
+      final warnings = StringBuffer();
+      final repository = await IncidentRepository.open(
+        fixturePath: fixturePath,
+        storePath: storePath,
+        auditPath: auditPath,
+        writeEnabled: true,
+        warnings: warnings,
+      );
+      await repository.create(draft);
+      await File(storePath).writeAsString('{');
+
+      expect(repository.all, hasLength(5));
+      expect(warnings.toString(), contains('No se pudo releer'));
+      await expectLater(
+        repository.create(draft),
+        throwsA(
+          isA<DomainException>()
+              .having((e) => e.code, 'code', 'PERSISTENCE_ERROR')
+              .having((e) => e.message, 'message', contains('no es válido')),
+        ),
+      );
+      expect(File(storePath).readAsStringSync(), '{');
+    });
+
+    test(
+      'si no puede escribir el temporal responde PERSISTENCE_ERROR',
+      () async {
+        await Directory('$storePath.tmp').create(recursive: true);
+        final repository = await openRepo();
+        await expectLater(
+          repository.create(draft),
+          throwsA(
+            isA<DomainException>()
+                .having((e) => e.code, 'code', 'PERSISTENCE_ERROR')
+                .having((e) => e.message, 'message', contains('guardar')),
+          ),
+        );
+        expect(repository.all, hasLength(4));
+        expect(File(storePath).existsSync(), isFalse);
+      },
+    );
+  });
 }
