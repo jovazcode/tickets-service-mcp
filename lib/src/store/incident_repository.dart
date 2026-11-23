@@ -10,6 +10,7 @@ import 'package:tickets_service_mcp/src/domain/incident_status.dart';
 import 'package:tickets_service_mcp/src/domain/new_incident.dart';
 import 'package:tickets_service_mcp/src/domain/text_rules.dart';
 import 'package:tickets_service_mcp/src/store/audit_log.dart';
+import 'package:tickets_service_mcp/src/store/file_lock.dart';
 
 /// {@template incident_repository}
 /// Acceso a las incidencias de la mesa.
@@ -36,6 +37,7 @@ class IncidentRepository {
     bool writeEnabled = false,
     this._deleteEnabled = false,
     DateTime Function()? clock,
+    this._warnings,
   }) : assert(
          !writeEnabled || (storePath != null && audit != null),
          'storePath y audit son obligatorios con escritura',
@@ -46,19 +48,7 @@ class IncidentRepository {
        _writeEnabled = writeEnabled,
        _clock = clock ?? DateTime.now,
        _nextId = 0 {
-    final ids = <String>{};
-    var maxNumber = 0;
-    for (final incident in _incidents) {
-      if (!ids.add(incident.id)) {
-        throw FormatException('ID duplicado: ${incident.id}');
-      }
-      final number = _idNumber(incident.id);
-      if (number > maxNumber) maxNumber = number;
-    }
-    if (nextId != null && nextId <= maxNumber) {
-      throw FormatException('nextId ($nextId) debe ser mayor que $maxNumber');
-    }
-    _nextId = nextId ?? maxNumber + 1;
+    _nextId = _checkIds(_incidents, nextId);
   }
 
   /// Abre el repositorio.
@@ -67,6 +57,12 @@ class IncidentRepository {
   /// la escritura esté deshabilitada, para no perder lo creado antes); si no,
   /// se parte de la fixture en [fixturePath]. Los cambios se registran en el
   /// fichero de auditoría [auditPath].
+  ///
+  /// Varios procesos pueden compartir el almacén: cada lectura recoge lo que
+  /// hayan guardado los demás, y las escrituras se hacen de una en una con un
+  /// bloqueo sobre `<storePath>.lock`. Los avisos (por ejemplo, un almacén
+  /// que otro proceso ha dejado ilegible) se escriben en [warnings] (por
+  /// defecto, [stderr]).
   ///
   /// Lanza [FileSystemException] si no se puede leer el fichero elegido y
   /// [FormatException] si su contenido no es válido.
@@ -77,27 +73,23 @@ class IncidentRepository {
     bool writeEnabled = false,
     bool deleteEnabled = false,
     DateTime Function()? clock,
+    StringSink? warnings,
   }) async {
-    final audit = AuditLog(auditPath);
+    final audit = AuditLog(auditPath, warnings: warnings);
     final store = File(storePath);
     if (store.existsSync()) {
-      final decoded = jsonDecode(await store.readAsString());
-      if (decoded is! Map<String, dynamic> ||
-          decoded['nextId'] is! int ||
-          decoded['incidents'] is! List) {
-        throw const FormatException(
-          'El almacén debe ser un objeto con nextId e incidents',
-        );
-      }
+      final content = await store.readAsString();
+      final (incidents, nextId) = _decodeStore(content);
       return IncidentRepository(
-        _parseIncidents(decoded['incidents'] as List),
-        nextId: decoded['nextId'] as int,
+        incidents,
+        nextId: nextId,
         storePath: storePath,
         audit: audit,
         writeEnabled: writeEnabled,
         deleteEnabled: deleteEnabled,
         clock: clock,
-      );
+        warnings: warnings,
+      ).._storeContent = content;
     }
 
     final decoded = jsonDecode(await File(fixturePath).readAsString());
@@ -111,7 +103,44 @@ class IncidentRepository {
       writeEnabled: writeEnabled,
       deleteEnabled: deleteEnabled,
       clock: clock,
+      warnings: warnings,
     );
+  }
+
+  /// Interpreta el contenido del almacén de trabajo.
+  ///
+  /// Lanza [FormatException] si no es válido.
+  static (List<Incident>, int) _decodeStore(String content) {
+    final decoded = jsonDecode(content);
+    if (decoded is! Map<String, dynamic> ||
+        decoded['nextId'] is! int ||
+        decoded['incidents'] is! List) {
+      throw const FormatException(
+        'El almacén debe ser un objeto con nextId e incidents',
+      );
+    }
+    final incidents = _parseIncidents(decoded['incidents'] as List);
+    return (incidents, _checkIds(incidents, decoded['nextId'] as int));
+  }
+
+  /// Comprueba que no haya IDs repetidos y que [nextId] supere a todos, y
+  /// devuelve el número del siguiente ID (por defecto, el mayor más uno).
+  ///
+  /// Lanza [FormatException] si no se cumple.
+  static int _checkIds(List<Incident> incidents, int? nextId) {
+    final ids = <String>{};
+    var maxNumber = 0;
+    for (final incident in incidents) {
+      if (!ids.add(incident.id)) {
+        throw FormatException('ID duplicado: ${incident.id}');
+      }
+      final number = _idNumber(incident.id);
+      if (number > maxNumber) maxNumber = number;
+    }
+    if (nextId != null && nextId <= maxNumber) {
+      throw FormatException('nextId ($nextId) debe ser mayor que $maxNumber');
+    }
+    return nextId ?? maxNumber + 1;
   }
 
   static List<Incident> _parseIncidents(List<dynamic> items) => [
@@ -131,15 +160,34 @@ class IncidentRepository {
   final bool _writeEnabled;
   final bool _deleteEnabled;
   final DateTime Function() _clock;
+  final StringSink? _warnings;
   Future<void> _writeQueue = Future.value();
   final StreamController<AuditEvent> _changes = StreamController.broadcast();
 
-  /// Cambios confirmados (guardados y auditados), en el orden en que se
-  /// aplican. Las operaciones rechazadas no emiten nada.
+  /// Contenido del almacén que reflejan [_incidents] y [_nextId], o `null`
+  /// si aún no se ha leído ni escrito.
+  String? _storeContent;
+
+  /// Cambios confirmados (guardados y auditados) por este repositorio, en el
+  /// orden en que se aplican. Las operaciones rechazadas no emiten nada, y
+  /// los cambios de otros procesos tampoco.
   Stream<AuditEvent> get changes => _changes.stream;
 
-  /// Todas las incidencias, en orden de creación.
-  List<Incident> get all => _incidents;
+  /// Todas las incidencias, en orden de creación, incluidos los cambios que
+  /// otros procesos hayan guardado en el almacén.
+  ///
+  /// Si el almacén no se puede leer, avisa y devuelve lo último que se leyó.
+  List<Incident> get all {
+    try {
+      _reload();
+    } on Exception catch (error) {
+      (_warnings ?? stderr).writeln(
+        '[store] No se pudo releer $_storePath; se usa la última versión '
+        'leída: $error',
+      );
+    }
+    return _incidents;
+  }
 
   /// Si se permiten operaciones de escritura.
   bool get writeEnabled => _writeEnabled;
@@ -150,7 +198,7 @@ class IncidentRepository {
   /// Devuelve la incidencia con [id].
   ///
   /// Lanza [DomainException] con código `NOT_FOUND` si no existe.
-  Incident getById(String id) => _incidents.firstWhere(
+  Incident getById(String id) => all.firstWhere(
     (incident) => incident.id == id,
     orElse: () =>
         throw DomainException('NOT_FOUND', 'No existe la incidencia $id'),
@@ -164,7 +212,7 @@ class IncidentRepository {
   Future<Incident> create(NewIncident draft) async {
     _ensureWritable();
     final valid = draft.validated();
-    return await _serialized(() async {
+    return await _exclusive(() async {
       final incident = Incident(
         id: 'INC-${_nextId.toString().padLeft(3, '0')}',
         title: valid.title,
@@ -250,7 +298,7 @@ class IncidentRepository {
     String? reason,
   }) async {
     _ensureWritable();
-    return await _serialized(() async {
+    return await _exclusive(() async {
       final current = getById(id);
       if (current.revision != expectedRevision) {
         throw DomainException(
@@ -300,7 +348,7 @@ class IncidentRepository {
   /// `VALIDATION_ERROR`, `NOT_FOUND` o `PERSISTENCE_ERROR`.
   Future<Incident> delete(String id, {required String reason}) async {
     checkDeletable(id, reason: reason);
-    return await _serialized(() async {
+    return await _exclusive(() async {
       final deleted = getById(id);
       await _commit(
         [
@@ -352,11 +400,11 @@ class IncidentRepository {
     int nextId,
     AuditEvent event,
   ) async {
-    await _persist(incidents, nextId);
+    _storeContent = await _persist(incidents, nextId);
     try {
       await _audit!.append(event);
     } on FileSystemException catch (error) {
-      await _persist(_incidents, _nextId);
+      _storeContent = await _persist(_incidents, _nextId);
       throw DomainException(
         'PERSISTENCE_ERROR',
         'No se pudo registrar la auditoría (${error.message}); no se ha '
@@ -366,6 +414,24 @@ class IncidentRepository {
     _incidents = List.unmodifiable(incidents);
     _nextId = nextId;
     _changes.add(event);
+  }
+
+  /// Vuelve a leer el almacén si su contenido no es el que reflejan
+  /// [_incidents] y [_nextId], es decir, si otro proceso lo ha cambiado.
+  ///
+  /// Lanza [FileSystemException] si no se puede leer y [FormatException] si
+  /// su contenido no es válido; en ambos casos no cambia nada.
+  void _reload() {
+    final path = _storePath;
+    if (path == null) return;
+    final store = File(path);
+    if (!store.existsSync()) return;
+    final content = store.readAsStringSync();
+    if (content == _storeContent) return;
+    final (incidents, nextId) = _decodeStore(content);
+    _incidents = List.unmodifiable(incidents);
+    _nextId = nextId;
+    _storeContent = content;
   }
 
   void _ensureWritable() {
@@ -378,25 +444,53 @@ class IncidentRepository {
     }
   }
 
-  /// Ejecuta [operation] cuando hayan terminado las escrituras anteriores.
-  Future<T> _serialized<T>(Future<T> Function() operation) {
-    final result = _writeQueue.then((_) => operation());
+  /// Ejecuta [operation] en exclusiva: cuando hayan terminado las escrituras
+  /// anteriores de este repositorio, con el bloqueo del almacén entre
+  /// procesos y tras releerlo, para que valide y escriba sobre lo último que
+  /// haya guardado cualquier proceso.
+  ///
+  /// Lanza [DomainException] con código `PERSISTENCE_ERROR` si no se puede
+  /// bloquear o releer el almacén (en ese caso no escribe nada).
+  Future<T> _exclusive<T>(Future<T> Function() operation) {
+    final result = _writeQueue.then((_) async {
+      try {
+        return await withFileLock('$_storePath.lock', () async {
+          try {
+            _reload();
+          } on FormatException catch (error) {
+            throw DomainException(
+              'PERSISTENCE_ERROR',
+              'El almacén no es válido (${error.message}); no se ha '
+                  'aplicado el cambio',
+            );
+          }
+          return await operation();
+        });
+      } on FileSystemException catch (error) {
+        throw DomainException(
+          'PERSISTENCE_ERROR',
+          'No se pudo acceder al almacén (${error.message}); no se ha '
+              'aplicado el cambio',
+        );
+      }
+    });
     _writeQueue = result.then((_) {}, onError: (Object _) {});
     return result;
   }
 
   /// Escribe el almacén en un fichero temporal y lo renombra, para que un
-  /// fallo a mitad no deje el almacén corrupto.
-  Future<void> _persist(List<Incident> incidents, int nextId) async {
+  /// fallo a mitad no deje el almacén corrupto. Devuelve lo escrito.
+  Future<String> _persist(List<Incident> incidents, int nextId) async {
     final store = File(_storePath!);
     final temp = File('${store.path}.tmp');
-    final content = const JsonEncoder.withIndent('  ').convert({
+    final json = const JsonEncoder.withIndent('  ').convert({
       'nextId': nextId,
       'incidents': [for (final incident in incidents) incident.toJson()],
     });
+    final content = '$json\n';
     try {
       await store.parent.create(recursive: true);
-      await temp.writeAsString('$content\n', flush: true);
+      await temp.writeAsString(content, flush: true);
       await temp.rename(store.path);
     } on FileSystemException catch (error) {
       if (temp.existsSync()) temp.deleteSync();
@@ -405,5 +499,6 @@ class IncidentRepository {
         'No se pudo guardar el almacén: ${error.message}',
       );
     }
+    return content;
   }
 }
