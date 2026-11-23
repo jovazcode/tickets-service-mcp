@@ -19,13 +19,19 @@ import 'package:tickets_service_mcp/src/store/incident_repository.dart';
 const serverName = 'mesa-incidencias';
 
 /// Versión del servidor.
-const serverVersion = '0.6.0';
+const serverVersion = '0.7.0';
 
 /// Herramientas que expone el servidor.
 ///
 /// Las de escritura se anuncian siempre; si la escritura no está habilitada
 /// responden `WRITE_DISABLED` (o `DELETE_DISABLED` al borrar).
-List<BaseTool> createAllTools(IncidentRepository repository) => [
+///
+/// [server] es el servidor en el que se registran: `eliminar_incidencia` lo
+/// usa para pedir confirmación al usuario.
+List<BaseTool> createAllTools(
+  IncidentRepository repository,
+  McpServer server,
+) => [
   SearchIncidentsTool(repository),
   GetIncidentTool(repository),
   FindDuplicatesTool(repository),
@@ -35,7 +41,7 @@ List<BaseTool> createAllTools(IncidentRepository repository) => [
   CreateIncidentTool(repository),
   UpdateIncidentTool(repository),
   ChangeStatusTool(repository),
-  DeleteIncidentTool(repository),
+  DeleteIncidentTool(repository, server),
 ];
 
 /// Instrucciones para el modelo, según los permisos activos.
@@ -53,7 +59,9 @@ String serverInstructions({
       'almacén local, así que confirma con el usuario antes de usarlas.';
   const delete =
       'El borrado está habilitado: usa eliminar_incidencia solo si el '
-      'usuario lo pide expresamente, tras mostrarle la ficha.';
+      'usuario lo pide expresamente, tras mostrarle la ficha. Si el '
+      'cliente lo admite, el servidor le pedirá además confirmación '
+      'directamente al usuario.';
   const noDelete =
       'El borrado está desactivado: eliminar_incidencia responderá '
       'DELETE_DISABLED.';
@@ -89,7 +97,7 @@ McpServer createMcpServer({
       ),
     ),
   );
-  createAllTools(repository).forEach(server.registerBaseTool);
+  createAllTools(repository, server).forEach(server.registerBaseTool);
   registerProcessDocuments(server, docsDirectory);
   registerIncidentResource(server, repository);
   registerOpenIncidentPrompt(server, docsDirectory);

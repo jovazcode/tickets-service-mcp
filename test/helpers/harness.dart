@@ -18,11 +18,15 @@ class Harness {
   ///
   /// Por defecto el cliente negocia MCP 2026-07-28 (sin estado); con
   /// [McpProtocol.legacy] usa la sesión de MCP 2025-11-25.
+  ///
+  /// Con [onElicit], el cliente declara la capacidad `elicitation` (modo
+  /// formulario) y responde con esa función a las preguntas del servidor.
   static Future<Harness> start({
     String docsDirectory = 'docs',
     bool writeEnabled = false,
     bool deleteEnabled = false,
     McpProtocol protocol = McpProtocol.stable,
+    Future<ElicitResult> Function(ElicitRequest request)? onElicit,
   }) async {
     final storeDir = await Directory.systemTemp.createTemp('harness');
     final repository = await IncidentRepository.open(
@@ -43,8 +47,15 @@ class Harness {
     );
     final client = McpClient(
       const Implementation(name: 'test', version: '1.0.0'),
-      options: McpClientOptions(protocol: protocol),
-    );
+      options: McpClientOptions(
+        protocol: protocol,
+        capabilities: ClientCapabilities(
+          elicitation: onElicit == null
+              ? null
+              : const ClientElicitation.formOnly(),
+        ),
+      ),
+    )..onElicitRequest = onElicit;
     await client.connect(
       IOStreamTransport(stream: toClient.stream, sink: toServer.sink),
     );

@@ -11,6 +11,12 @@ export 'src/domain/new_incident.dart';
 export 'src/domain/text_rules.dart';
 export 'src/mcp/resources/incident_resource.dart';
 export 'src/mcp/server.dart';
+export 'src/mcp/tools/delete_incident_tool.dart'
+    show
+        deleteConfirmationField,
+        deleteConfirmationKey,
+        deleteConfirmationRequest;
+export 'src/mcp/user_confirmation.dart';
 export 'src/server_config.dart';
 export 'src/services/duplicates.dart';
 export 'src/services/incident_search.dart';

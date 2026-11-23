@@ -272,14 +272,13 @@ class IncidentRepository {
     });
   }
 
-  /// Borra físicamente la incidencia [id] y devuelve cómo estaba.
-  ///
-  /// Su ID no se reutiliza. [reason] explica el motivo y no puede estar
-  /// vacío.
+  /// Comprueba, sin cambiar nada, que se podría borrar la incidencia [id]
+  /// con el motivo [reason], y la devuelve. Sirve para validar antes de pedir
+  /// confirmación al usuario; [delete] vuelve a comprobarlo.
   ///
   /// Lanza [DomainException] con código `WRITE_DISABLED`, `DELETE_DISABLED`,
-  /// `VALIDATION_ERROR`, `NOT_FOUND` o `PERSISTENCE_ERROR`.
-  Future<Incident> delete(String id, {required String reason}) async {
+  /// `VALIDATION_ERROR` o `NOT_FOUND`.
+  Incident checkDeletable(String id, {required String reason}) {
     _ensureWritable();
     if (!_deleteEnabled) {
       throw const DomainException(
@@ -289,6 +288,18 @@ class IncidentRepository {
       );
     }
     checkText('reason', reason, maxReasonLength);
+    return getById(id);
+  }
+
+  /// Borra físicamente la incidencia [id] y devuelve cómo estaba.
+  ///
+  /// Su ID no se reutiliza. [reason] explica el motivo y no puede estar
+  /// vacío.
+  ///
+  /// Lanza [DomainException] con código `WRITE_DISABLED`, `DELETE_DISABLED`,
+  /// `VALIDATION_ERROR`, `NOT_FOUND` o `PERSISTENCE_ERROR`.
+  Future<Incident> delete(String id, {required String reason}) async {
+    checkDeletable(id, reason: reason);
     return await _serialized(() async {
       final deleted = getById(id);
       await _commit(
