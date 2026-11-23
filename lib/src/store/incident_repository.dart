@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -131,6 +132,11 @@ class IncidentRepository {
   final bool _deleteEnabled;
   final DateTime Function() _clock;
   Future<void> _writeQueue = Future.value();
+  final StreamController<AuditEvent> _changes = StreamController.broadcast();
+
+  /// Cambios confirmados (guardados y auditados), en el orden en que se
+  /// aplican. Las operaciones rechazadas no emiten nada.
+  Stream<AuditEvent> get changes => _changes.stream;
 
   /// Todas las incidencias, en orden de creación.
   List<Incident> get all => _incidents;
@@ -348,6 +354,7 @@ class IncidentRepository {
     }
     _incidents = List.unmodifiable(incidents);
     _nextId = nextId;
+    _changes.add(event);
   }
 
   void _ensureWritable() {

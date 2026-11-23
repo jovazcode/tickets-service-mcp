@@ -15,10 +15,14 @@ class Harness {
 
   /// Arranca un servidor sobre la fixture del proyecto, con un almacén de
   /// trabajo en una carpeta temporal que se borra en [stop].
+  ///
+  /// Por defecto el cliente negocia MCP 2026-07-28 (sin estado); con
+  /// [McpProtocol.legacy] usa la sesión de MCP 2025-11-25.
   static Future<Harness> start({
     String docsDirectory = 'docs',
     bool writeEnabled = false,
     bool deleteEnabled = false,
+    McpProtocol protocol = McpProtocol.stable,
   }) async {
     final storeDir = await Directory.systemTemp.createTemp('harness');
     final repository = await IncidentRepository.open(
@@ -39,6 +43,7 @@ class Harness {
     );
     final client = McpClient(
       const Implementation(name: 'test', version: '1.0.0'),
+      options: McpClientOptions(protocol: protocol),
     );
     await client.connect(
       IOStreamTransport(stream: toClient.stream, sink: toServer.sink),
