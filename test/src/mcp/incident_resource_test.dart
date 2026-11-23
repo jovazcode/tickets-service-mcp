@@ -119,21 +119,6 @@ void main() {
       );
     });
 
-    test('una incidencia inexistente responde resourceNotFound', () async {
-      await expectLater(
-        harness.client.readResource(
-          const ReadResourceRequest(uri: 'incidencia://INC-999'),
-        ),
-        throwsA(
-          isA<McpError>().having(
-            (e) => e.code,
-            'code',
-            ErrorCode.resourceNotFound.value,
-          ),
-        ),
-      );
-    });
-
     test('autocompleta el ID', () async {
       final result = await harness.client.complete(
         const CompleteRequest(
@@ -195,6 +180,30 @@ void main() {
 
   /// Avisos esperados: alta, estado, workaround, título y borrado.
   const expectedNotices = [1, 0, 0, 1, 1];
+
+  group('incidencia inexistente', () {
+    test('resourceNotFoundCode según la versión del protocolo', () {
+      expect(resourceNotFoundCode(null), -32002);
+      expect(resourceNotFoundCode('2025-11-25'), -32002);
+      expect(resourceNotFoundCode('2026-07-28'), -32602);
+    });
+
+    for (final (protocol, code) in [
+      (McpProtocol.legacy, -32002),
+      (McpProtocol.stable, -32602),
+    ]) {
+      test('${protocol.name}: responde $code', () async {
+        final harness = await Harness.start(protocol: protocol);
+        addTearDown(harness.stop);
+        await expectLater(
+          harness.client.readResource(
+            const ReadResourceRequest(uri: 'incidencia://INC-999'),
+          ),
+          throwsA(isA<McpError>().having((e) => e.code, 'code', code)),
+        );
+      });
+    }
+  });
 
   group('list_changed', () {
     test('MCP 2025-11-25: aviso global en la sesión', () async {

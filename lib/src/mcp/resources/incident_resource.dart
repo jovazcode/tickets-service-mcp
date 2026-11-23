@@ -27,6 +27,14 @@ List<String> completeIncidentIds(Iterable<Incident> incidents, String value) {
   ].take(maxCompletions).toList();
 }
 
+/// Código de error JSON-RPC para un recurso que no existe, según la versión
+/// del protocolo de la petición: `-32002` hasta MCP 2025-11-25 y `-32602`
+/// (Invalid Params) desde MCP 2026-07-28 (SEP-2164).
+int resourceNotFoundCode(String? protocolVersion) =>
+    protocolVersion != null && isStatelessProtocolVersion(protocolVersion)
+    ? ErrorCode.invalidParams.value
+    : ErrorCode.resourceNotFound.value;
+
 /// Si [event] cambia la lista de recursos `incidencia://`: altas, borrados y
 /// cambios de título (que forma parte del nombre del recurso).
 bool changesIncidentList(AuditEvent event) => switch (event.operation) {
@@ -76,9 +84,11 @@ void registerIncidentResource(McpServer server, IncidentRepository repository) {
       try {
         incident = repository.getById(id);
       } on DomainException catch (error) {
-        throw McpError(ErrorCode.resourceNotFound.value, error.message, {
-          'uri': uri.toString(),
-        });
+        throw McpError(
+          resourceNotFoundCode(extra.protocolVersion),
+          error.message,
+          {'uri': uri.toString()},
+        );
       }
       return ReadResourceResult(
         contents: [
