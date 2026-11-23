@@ -26,12 +26,20 @@ abstract class BaseTool {
   Future<Map<String, dynamic>> run(Map<String, dynamic> args);
 
   /// Ejecuta [run] y traduce su resultado o error a un [CallToolResult].
-  Future<CallToolResult> execute(
+  ///
+  /// Las herramientas que necesitan preguntar al usuario lo sobrescriben:
+  /// tienen el contexto de la petición en [extra] y pueden devolver un
+  /// [InputRequiredResult] (MCP 2026-07-28).
+  Future<BaseResultData> execute(
     Map<String, dynamic> args,
     RequestHandlerExtra extra,
-  ) async {
+  ) => guard(() async => CallToolResult.fromStructuredContent(await run(args)));
+
+  /// Ejecuta [body] y convierte una [DomainException] en un resultado de
+  /// error para el modelo.
+  Future<BaseResultData> guard(Future<BaseResultData> Function() body) async {
     try {
-      return CallToolResult.fromStructuredContent(await run(args));
+      return await body();
     } on DomainException catch (error) {
       return CallToolResult(
         isError: true,
@@ -45,7 +53,9 @@ abstract class BaseTool {
 extension ToolRegistration on McpServer {
   /// Registra [tool] con todos sus metadatos.
   void registerBaseTool(BaseTool tool) {
-    registerTool(
+    // La variante "stateless" admite resultados InputRequiredResult; con
+    // sesiones MCP 2025-11-25 se comporta igual que registerTool.
+    registerStatelessTool(
       tool.name,
       title: tool.title,
       description: tool.description,

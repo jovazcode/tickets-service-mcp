@@ -8,7 +8,7 @@
 Servidor [Model Context Protocol (MCP)][mcp_link] local, escrito en Dart, que expone una mesa de incidencias ficticia a clientes MCP (Claude Code, Claude Desktop, MCP Inspector…) a través de **stdio**.
 
 > [!NOTE]
-> Fase 4 (en curso): CRUD completo, triaje (siguiente incidencia prioritaria, resumen de la mesa y cambios de estado con transiciones permitidas), detección de duplicados, historial con auditoría, fichas como recursos `incidencia://{id}` con autocompletado y avisos de cambios, documentos de proceso y prompt de apertura.
+> Fase 4 (en curso): CRUD completo, triaje (siguiente incidencia prioritaria, resumen de la mesa y cambios de estado con transiciones permitidas), detección de duplicados, historial con auditoría, fichas como recursos `incidencia://{id}` con autocompletado y avisos de cambios, confirmación del borrado por elicitación, documentos de proceso y prompt de apertura.
 
 ## Índice
 
@@ -59,7 +59,7 @@ dart pub get
 | Tool | `crear_incidencia` | Abre una incidencia (`title`, `detail`, `impact`, `workaround` opcional) en estado `abierta` con la fecha de hoy y el siguiente ID. Si hay incidencias activas parecidas las devuelve en `possibleDuplicates`, sin impedir la creación. Requiere escritura habilitada; si no, `WRITE_DISABLED`. Valida el texto (`VALIDATION_ERROR`). |
 | Tool | `actualizar_incidencia` | Cambia uno o varios campos (`title`, `detail`, `impact`, `workaround`; el estado, con `cambiar_estado`). Exige `expectedRevision`, la revisión leída antes de editar: si la incidencia ha cambiado entretanto responde `REVISION_CONFLICT` y no aplica nada. Requiere escritura. |
 | Tool | `cambiar_estado` | Mueve una incidencia por su ciclo de vida: `abierta` → `en_progreso`/`resuelta`; `en_progreso` → `resuelta`/`abierta`; `resuelta` → `abierta` (reabrir exige `reason`, si no `REASON_REQUIRED`). Otras transiciones → `INVALID_TRANSITION`. Exige `expectedRevision`. Requiere escritura. |
-| Tool | `eliminar_incidencia` | Borra físicamente una incidencia (no se puede deshacer; su ID no se reutiliza). Exige `confirm: true` (`CONFIRMATION_REQUIRED`) y `reason`. Requiere escritura y además borrado (`DELETE_DISABLED`). |
+| Tool | `eliminar_incidencia` | Borra físicamente una incidencia (no se puede deshacer; su ID no se reutiliza). Exige `confirm: true` (`CONFIRMATION_REQUIRED`) y `reason`. Requiere escritura y además borrado (`DELETE_DISABLED`). Si el cliente declara la capacidad `elicitation`, el servidor pide además confirmación directamente al usuario con un formulario (casilla «Borrar definitivamente»): `elicitation/create` en MCP 2025-11-25 y `input_required` en MCP 2026-07-28. Si rechaza responde `DELETE_DECLINED` y si cierra sin responder, `DELETE_CANCELLED`. Sin elicitación, `confirm: true` es la única confirmación. |
 | Resource | `docs://proceso_apertura` | Cómo abrir una incidencia ([`docs/proceso_apertura.md`](docs/proceso_apertura.md)). |
 | Resource | `docs://proceso_triaje` | Cómo clasificar y priorizar ([`docs/proceso_triaje.md`](docs/proceso_triaje.md)). |
 | Resource template | `incidencia://{id}` | Ficha de una incidencia en JSON (con su revisión). Se lista una por incidencia, el ID se autocompleta (`completion/complete`; acepta `INC-10` o solo `10`) y una incidencia inexistente responde recurso no encontrado: `-32002` en MCP 2025-11-25 y `-32602` en MCP 2026-07-28. Al crear, borrar o cambiar el título de una incidencia el servidor envía `notifications/resources/list_changed`: de forma global en sesiones MCP 2025-11-25 y por `subscriptions/listen` en MCP 2026-07-28. |
