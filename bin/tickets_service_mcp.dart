@@ -18,6 +18,7 @@ Future<void> main(List<String> arguments) async {
     repository = await IncidentRepository.open(
       fixturePath: config.dataPath,
       storePath: config.storePath,
+      auditPath: config.auditPath,
       writeEnabled: config.writeEnabled,
       deleteEnabled: config.deleteEnabled,
     );

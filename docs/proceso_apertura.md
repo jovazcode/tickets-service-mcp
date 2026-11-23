@@ -4,7 +4,7 @@ Datos ficticios. Este documento describe cómo se registra una incidencia nueva 
 
 ## 1. Comprobar antes de abrir
 
-1. Busca si ya existe una incidencia parecida (`buscar_incidencias` con palabras clave del problema).
+1. Busca si ya existe una incidencia parecida (`buscar_duplicadas` con el síntoma y la descripción; para búsquedas concretas, `buscar_incidencias`).
 2. Si existe y sigue activa (`abierta` o `en_progreso`), no abras otra: aporta la información a la existente.
 3. Si existe pero está `resuelta` y el problema ha vuelto, abre una nueva y menciona el ID anterior en el detalle.
 

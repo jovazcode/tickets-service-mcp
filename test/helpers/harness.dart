@@ -24,6 +24,7 @@ class Harness {
     final repository = await IncidentRepository.open(
       fixturePath: 'data/tickets.json',
       storePath: p.join(storeDir.path, 'tickets.local.json'),
+      auditPath: p.join(storeDir.path, 'tickets.audit.jsonl'),
       writeEnabled: writeEnabled,
       deleteEnabled: deleteEnabled,
     );

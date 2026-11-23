@@ -52,6 +52,7 @@ void main() {
       final repository = await IncidentRepository.open(
         fixturePath: 'data/tickets.json',
         storePath: 'no_existe/tickets.local.json',
+        auditPath: 'no_existe/tickets.audit.jsonl',
       );
       expect(ids(priorityQueue(repository.all)), [
         'INC-104',

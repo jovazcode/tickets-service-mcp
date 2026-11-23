@@ -4,6 +4,7 @@ import 'package:tickets_service_mcp/src/domain/new_incident.dart';
 import 'package:tickets_service_mcp/src/domain/text_rules.dart';
 import 'package:tickets_service_mcp/src/mcp/schemas.dart';
 import 'package:tickets_service_mcp/src/mcp/tools/base_tool.dart';
+import 'package:tickets_service_mcp/src/services/duplicates.dart';
 import 'package:tickets_service_mcp/src/store/incident_repository.dart';
 
 /// {@template create_incident_tool}
@@ -25,9 +26,11 @@ class CreateIncidentTool extends BaseTool {
   String get description =>
       'Abre una incidencia nueva en estado "abierta" con la fecha de hoy; el '
       'servidor asigna el ID. Antes, sigue docs://proceso_apertura: busca '
-      'con buscar_incidencias si ya existe una parecida y pide los datos que '
-      'falten en lugar de inventarlos. Requiere que el servidor tenga la '
-      'escritura habilitada; si no, responde WRITE_DISABLED.';
+      'con buscar_duplicadas si ya existe una parecida y pide los datos que '
+      'falten en lugar de inventarlos. Si al crearla encuentra incidencias '
+      'activas muy parecidas, las devuelve en possibleDuplicates (no impide '
+      'la creación): coméntaselas al usuario. Requiere que el servidor tenga '
+      'la escritura habilitada; si no, responde WRITE_DISABLED.';
 
   @override
   ToolInputSchema get inputSchema => JsonSchema.object(
@@ -58,8 +61,14 @@ class CreateIncidentTool extends BaseTool {
 
   @override
   ToolOutputSchema get outputSchema => JsonSchema.object(
-    properties: {'incident': incidentSchema},
-    required: ['incident'],
+    properties: {
+      'incident': incidentSchema,
+      'possibleDuplicates': JsonSchema.array(
+        items: duplicateCandidateSchema,
+        description: 'Incidencias activas muy parecidas a la creada',
+      ),
+    },
+    required: ['incident', 'possibleDuplicates'],
   );
 
   @override
@@ -68,14 +77,23 @@ class CreateIncidentTool extends BaseTool {
 
   @override
   Future<Map<String, dynamic>> run(Map<String, dynamic> args) async {
-    final incident = await _repository.create(
-      NewIncident(
-        title: args['title'] as String,
-        detail: args['detail'] as String,
-        impact: Impact.parse(args['impact']),
-        workaround: args['workaround'] as bool? ?? false,
-      ),
+    final draft = NewIncident(
+      title: args['title'] as String,
+      detail: args['detail'] as String,
+      impact: Impact.parse(args['impact']),
+      workaround: args['workaround'] as bool? ?? false,
     );
-    return {'incident': incident.toJson()};
+    final similar = findDuplicates(
+      _repository.all.where((i) => i.status.isActive),
+      title: draft.title,
+      detail: draft.detail,
+    );
+    final incident = await _repository.create(draft);
+    return {
+      'incident': incident.toJson(),
+      'possibleDuplicates': [
+        for (final c in similar) duplicateCandidateJson(c),
+      ],
+    };
   }
 }

@@ -8,6 +8,7 @@ class ServerConfig {
   const new({
     required this.dataPath,
     required this.storePath,
+    required this.auditPath,
     required this.docsDirectory,
     this.writeEnabled = false,
     this.deleteEnabled = false,
@@ -20,6 +21,8 @@ class ServerConfig {
   ///   (por defecto `data/tickets.json`).
   /// - `MESA_INCIDENCIAS_STORE`: almacén de trabajo donde se guardan los
   ///   cambios (por defecto `data/tickets.local.json`).
+  /// - `MESA_INCIDENCIAS_AUDIT`: registro de auditoría append-only
+  ///   (por defecto `data/tickets.audit.jsonl`).
   /// - `MESA_INCIDENCIAS_DOCS`: carpeta de documentos de proceso
   ///   (por defecto `docs`).
   /// - `MESA_INCIDENCIAS_WRITE_ENABLED`: `1`, `true`, `yes` u `on` para
@@ -54,6 +57,10 @@ class ServerConfig {
         'MESA_INCIDENCIAS_STORE',
         p.join('data', 'tickets.local.json'),
       ),
+      auditPath: resolve(
+        'MESA_INCIDENCIAS_AUDIT',
+        p.join('data', 'tickets.audit.jsonl'),
+      ),
       docsDirectory: resolve('MESA_INCIDENCIAS_DOCS', 'docs'),
       writeEnabled: flag('MESA_INCIDENCIAS_WRITE_ENABLED'),
       deleteEnabled: flag('MESA_INCIDENCIAS_DELETE_ENABLED'),
@@ -65,6 +72,9 @@ class ServerConfig {
 
   /// Ruta absoluta del almacén de trabajo.
   final String storePath;
+
+  /// Ruta absoluta del registro de auditoría.
+  final String auditPath;
 
   /// Ruta absoluta de la carpeta con los documentos de proceso.
   final String docsDirectory;

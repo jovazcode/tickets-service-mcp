@@ -8,7 +8,7 @@
 Servidor [Model Context Protocol (MCP)][mcp_link] local, escrito en Dart, que expone una mesa de incidencias ficticia a clientes MCP (Claude Code, Claude Desktop, MCP Inspector…) a través de **stdio**.
 
 > [!NOTE]
-> Fase 4 (en curso): CRUD completo, triaje (siguiente incidencia prioritaria, resumen de la mesa y cambios de estado con transiciones permitidas), documentos de proceso y prompt de apertura.
+> Fase 4 (en curso): CRUD completo, triaje (siguiente incidencia prioritaria, resumen de la mesa y cambios de estado con transiciones permitidas), detección de duplicados, historial con auditoría, documentos de proceso y prompt de apertura.
 
 ## Índice
 
@@ -52,9 +52,11 @@ dart pub get
 | --- | --- | --- |
 | Tool | `buscar_incidencias` | Busca por texto libre (ID, título y detalle, sin distinguir mayúsculas ni tildes) y filtra por `status`, `impact` y `workaround`. Paginación con `limit` (1-100, por defecto 20) y `offset`. Devuelve `{items, total}`. |
 | Tool | `obtener_incidencia` | Devuelve la ficha completa de una incidencia por `id` (`INC-104`). Si no existe, error `NOT_FOUND`. |
+| Tool | `buscar_duplicadas` | Incidencias parecidas a un problema (`title`, `detail` opcional), con puntuación de 0 a 1 y términos en común. Compara palabras significativas (sin tildes ni palabras vacías, recortadas a su raíz) con el coeficiente de solapamiento y exige 2 términos comunes. Opcionales: `includeResolved` (por defecto `true`) y `minScore` (por defecto 0,4). Es una heurística para avisar, no para decidir. |
+| Tool | `historial_incidencia` | Cambios registrados de una incidencia, del más antiguo al más reciente: alta (con la ficha), ediciones y cambios de estado (campos con valor anterior y nuevo), y borrado (con la ficha y el motivo). Funciona también con incidencias borradas. |
 | Tool | `siguiente_incidencia_prioritaria` | La incidencia activa que hay que atender primero según `docs://proceso_triaje` (impacto alto, sin alternativa temporal, más antigua, ID menor), con los criterios aplicados y la cola de IDs activos en orden. |
 | Tool | `resumen_mesa` | Totales: incidencias y activas, críticas (activas de impacto alto sin alternativa temporal), recuentos por estado, impacto y alternativa temporal, y la activa más antigua. |
-| Tool | `crear_incidencia` | Abre una incidencia (`title`, `detail`, `impact`, `workaround` opcional) en estado `abierta` con la fecha de hoy y el siguiente ID. Requiere escritura habilitada; si no, `WRITE_DISABLED`. Valida el texto (`VALIDATION_ERROR`). |
+| Tool | `crear_incidencia` | Abre una incidencia (`title`, `detail`, `impact`, `workaround` opcional) en estado `abierta` con la fecha de hoy y el siguiente ID. Si hay incidencias activas parecidas las devuelve en `possibleDuplicates`, sin impedir la creación. Requiere escritura habilitada; si no, `WRITE_DISABLED`. Valida el texto (`VALIDATION_ERROR`). |
 | Tool | `actualizar_incidencia` | Cambia uno o varios campos (`title`, `detail`, `impact`, `workaround`; el estado, con `cambiar_estado`). Exige `expectedRevision`, la revisión leída antes de editar: si la incidencia ha cambiado entretanto responde `REVISION_CONFLICT` y no aplica nada. Requiere escritura. |
 | Tool | `cambiar_estado` | Mueve una incidencia por su ciclo de vida: `abierta` → `en_progreso`/`resuelta`; `en_progreso` → `resuelta`/`abierta`; `resuelta` → `abierta` (reabrir exige `reason`, si no `REASON_REQUIRED`). Otras transiciones → `INVALID_TRANSITION`. Exige `expectedRevision`. Requiere escritura. |
 | Tool | `eliminar_incidencia` | Borra físicamente una incidencia (no se puede deshacer; su ID no se reutiliza). Exige `confirm: true` (`CONFIRMATION_REQUIRED`) y `reason`. Requiere escritura y además borrado (`DELETE_DISABLED`). |
@@ -118,13 +120,16 @@ El servidor busca los datos y documentos relativos a la raíz del proyecto (carp
 | --- | --- |
 | `MESA_INCIDENCIAS_DATA` | `data/tickets.json` (fixture, nunca se modifica) |
 | `MESA_INCIDENCIAS_STORE` | `data/tickets.local.json` (almacén de trabajo) |
+| `MESA_INCIDENCIAS_AUDIT` | `data/tickets.audit.jsonl` (auditoría append-only) |
 | `MESA_INCIDENCIAS_DOCS` | `docs` |
 | `MESA_INCIDENCIAS_WRITE_ENABLED` | vacío: solo lectura. `1`, `true`, `yes` u `on` habilitan la escritura |
 | `MESA_INCIDENCIAS_DELETE_ENABLED` | vacío: sin borrado. Con los mismos valores lo habilita (requiere también escritura) |
 
 ### Escritura y almacén de trabajo
 
-Con la escritura habilitada, el primer cambio copia la fixture al almacén de trabajo (`{nextId, incidents}`), que se guarda de forma atómica (fichero temporal + renombrado). Al arrancar, si el almacén existe se usa en lugar de la fixture, también en solo lectura, para no perder lo creado. Para volver al estado inicial, borra `data/tickets.local.json`.
+Con la escritura habilitada, el primer cambio copia la fixture al almacén de trabajo (`{nextId, incidents}`), que se guarda de forma atómica (fichero temporal + renombrado). Al arrancar, si el almacén existe se usa en lugar de la fixture, también en solo lectura, para no perder lo creado. Para volver al estado inicial, borra `data/tickets.local.json` (y `data/tickets.audit.jsonl` si quieres empezar también sin historial).
+
+Cada cambio se añade además como una línea JSON a la auditoría (`data/tickets.audit.jsonl`), que nunca se reescribe: fecha UTC, operación, motivo y campos cambiados (o la ficha completa en altas y borrados). Primero se guarda el almacén y después la auditoría; si esta falla, el almacén se restaura y el cambio no se aplica, para que nunca quede un cambio sin registrar.
 
 En Claude Code, `.mcp.json` pasa al servidor los valores de `MESA_INCIDENCIAS_WRITE_ENABLED` y `MESA_INCIDENCIAS_DELETE_ENABLED` del entorno en el que arrancas Claude Code (por defecto `0`):
 

@@ -29,10 +29,12 @@ const draft = NewIncident(
 void main() {
   late Directory tempDir;
   late String storePath;
+  late String auditPath;
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('repo_test');
     storePath = p.join(tempDir.path, 'store', 'tickets.local.json');
+    auditPath = p.join(tempDir.path, 'store', 'tickets.audit.jsonl');
   });
 
   tearDown(() => tempDir.delete(recursive: true));
@@ -43,9 +45,10 @@ void main() {
   }) => IncidentRepository.open(
     fixturePath: fixturePath,
     storePath: storePath,
+    auditPath: auditPath,
     writeEnabled: writeEnabled,
     deleteEnabled: deleteEnabled,
-    clock: () => DateTime(2026, 11, 22, 10),
+    clock: () => DateTime.utc(2026, 11, 22, 10),
   );
 
   Future<String> writeFile(String name, String content) async {
@@ -85,7 +88,11 @@ void main() {
     test('rechaza una fixture que no es un array', () async {
       final path = await writeFile('bad.json', '{}');
       expect(
-        IncidentRepository.open(fixturePath: path, storePath: storePath),
+        IncidentRepository.open(
+          fixturePath: path,
+          storePath: storePath,
+          auditPath: auditPath,
+        ),
         throwsFormatException,
       );
     });
@@ -93,7 +100,11 @@ void main() {
     test('rechaza elementos que no son objetos', () async {
       final path = await writeFile('bad.json', '[1]');
       expect(
-        IncidentRepository.open(fixturePath: path, storePath: storePath),
+        IncidentRepository.open(
+          fixturePath: path,
+          storePath: storePath,
+          auditPath: auditPath,
+        ),
         throwsFormatException,
       );
     });
@@ -101,7 +112,11 @@ void main() {
     test('rechaza un almacén con formato inválido', () async {
       final path = await writeFile('store.json', '[]');
       expect(
-        IncidentRepository.open(fixturePath: fixturePath, storePath: path),
+        IncidentRepository.open(
+          fixturePath: fixturePath,
+          storePath: path,
+          auditPath: auditPath,
+        ),
         throwsFormatException,
       );
     });
@@ -111,6 +126,7 @@ void main() {
         IncidentRepository.open(
           fixturePath: p.join(tempDir.path, 'no_existe.json'),
           storePath: storePath,
+          auditPath: auditPath,
         ),
         throwsA(isA<FileSystemException>()),
       );
@@ -218,6 +234,7 @@ void main() {
       final repository = await IncidentRepository.open(
         fixturePath: fixturePath,
         storePath: p.join(blocker, 'tickets.local.json'),
+        auditPath: auditPath,
         writeEnabled: true,
       );
       await expectLater(
@@ -466,5 +483,99 @@ void main() {
         throwsDomain('REVISION_CONFLICT'),
       );
     });
+  });
+
+  group('auditoría', () {
+    test('registra cada operación con sus cambios y motivos', () async {
+      final repository = await openRepo(deleteEnabled: true);
+      final created = await repository.create(draft);
+      await repository.update(
+        created.id,
+        expectedRevision: 1,
+        patch: const IncidentPatch(workaround: true),
+      );
+      await repository.changeStatus(
+        created.id,
+        expectedRevision: 2,
+        status: IncidentStatus.resuelta,
+      );
+      await repository.changeStatus(
+        created.id,
+        expectedRevision: 3,
+        status: IncidentStatus.abierta,
+        reason: '  Ha vuelto  ',
+      );
+      await repository.delete(created.id, reason: ' Era una prueba ');
+
+      final events = await repository.history(created.id);
+      expect(events.map((e) => e.operation), [
+        AuditOperation.crear,
+        AuditOperation.actualizar,
+        AuditOperation.cambiarEstado,
+        AuditOperation.cambiarEstado,
+        AuditOperation.eliminar,
+      ]);
+      expect(events.first.snapshot?.title, 'Falla la impresión');
+      expect(events[1].changes, {
+        'workaround': {'from': false, 'to': true},
+      });
+      expect(events[3].reason, 'Ha vuelto');
+      expect(events.last.reason, 'Era una prueba');
+      expect(events.last.snapshot?.status, IncidentStatus.abierta);
+      expect(events.first.timestamp, '2026-11-22T10:00:00.000Z');
+    });
+
+    test('las operaciones rechazadas no se registran', () async {
+      final repository = await openRepo();
+      await expectLater(
+        repository.changeStatus(
+          'INC-103',
+          expectedRevision: 1,
+          status: IncidentStatus.enProgreso,
+        ),
+        throwsDomain('INVALID_TRANSITION'),
+      );
+      expect(File(auditPath).existsSync(), isFalse);
+    });
+
+    test(
+      'incidencia sin cambios: historial vacío; inexistente: NOT_FOUND',
+      () async {
+        final repository = await openRepo();
+        expect(await repository.history('INC-101'), isEmpty);
+        await expectLater(
+          repository.history('INC-999'),
+          throwsDomain('NOT_FOUND'),
+        );
+      },
+    );
+
+    test('sin registro de auditoría el historial está vacío', () async {
+      final repository = IncidentRepository([incident('INC-101')]);
+      expect(await repository.history('INC-101'), isEmpty);
+    });
+
+    test(
+      'si falla la auditoría restaura el almacén y no aplica el cambio',
+      () async {
+        // El registro de auditoría es una carpeta: no se puede escribir.
+        await Directory(auditPath).create(recursive: true);
+        final repository = await openRepo();
+        await expectLater(
+          repository.create(draft),
+          throwsA(
+            isA<DomainException>()
+                .having((e) => e.code, 'code', 'PERSISTENCE_ERROR')
+                .having((e) => e.message, 'message', contains('auditoría')),
+          ),
+        );
+        expect(repository.all, hasLength(4));
+        final stored = jsonDecode(
+          File(storePath).readAsStringSync(),
+        ) as Map<String, dynamic>;
+        expect(stored['nextId'], 105);
+        expect(stored['incidents'] as List, hasLength(4));
+      },
+    );
   });
 }

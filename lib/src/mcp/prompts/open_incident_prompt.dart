@@ -41,7 +41,7 @@ Quiero abrir una incidencia siguiendo el proceso de apertura adjunto.
 ${problem.isEmpty ? 'Pregúntame primero qué problema quiero registrar.' : 'Problema: $problem'}
 
 Pasos:
-1. Usa buscar_incidencias con palabras clave del problema. Si hay una activa equivalente, enséñamela y no crees otra.
+1. Usa buscar_duplicadas con el problema. Si hay una activa equivalente, enséñamela y no crees otra.
 2. Completa title, detail, impact y workaround. Si falta información imprescindible, pregúntamela; no la inventes. Para el impacto aplica docs://proceso_triaje.
 3. Muéstrame la incidencia propuesta y espera mi confirmación.
 4. Solo entonces llama a crear_incidencia y dime el ID asignado.''',
